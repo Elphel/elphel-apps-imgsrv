@@ -195,10 +195,40 @@
 #define TRAILER_SIZE   0x02
 #define MAP_OPTIONS MAP_FILE | MAP_PRIVATE
 //#define GLOBALPARS(x) globalPars[(x)-FRAMEPAR_GLOBALS] // should work in drivers and application
+
+#define IMAGE_CHN_NUM 4
+
+struct file_set {
+	unsigned short port_num;
+	const char     *cirbuf_fn;
+	int            circbuf_fd;
+	const char     *jphead_fn;
+	int            jphead_fd;
+};
+static struct file_set  files[IMAGE_CHN_NUM];
+
 unsigned long * ccam_dma_buf;           /* mmapped array */
 
 char trailer[TRAILER_SIZE] = { 0xff, 0xd9 };
 
+const char *circbuf_fnames[] = {
+		"/dev/circbuf0",
+		"/dev/circbuf1",
+		"/dev/circbuf2",
+		"/dev/circbuf3"
+};
+
+const char *jhead_fnames[] = {
+		"/dev/jpeghead0",
+		"/dev/jpeghead1",
+		"/dev/jpeghead2",
+		"/dev/jpeghead3",
+};
+
+const char app_args[] = "Usage:\n%s -p <port_number_1> [<port_number_2> <port_number_3> <port_number_4>]\n" \
+			"Start image server, bind it to ports <port_number_1> <port_number_2> <port_number_3> <port_number_4>\n" \
+			"or to ports <port_number_1> <port_number_1 + 1> <port_number_1 + 2> <port_number_1 + 3> if " \
+			"<port_number_2>, <port_number_3> and <port_number_4> are not provided\n";
 
 const char url_args[] = "This server supports sequence of commands entered in the URL (separated by \"/\", case sensitive )\n"
 			"executing them from left to right as they appear in the URL\n"
@@ -232,9 +262,9 @@ const char url_args[] = "This server supports sequence of commands entered in th
 			"         camera should be set in triggered mode (TRIG=4), internal (TRIG_CONDITION=0).\n"
 			"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.";
 //int  sendImage(int bufferImageData, int fd_circ, int use_Exif);
-int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage);
+//int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage);
 void sendBuffer(void * buffer, int len);
-void listener_loop(int port);
+//void listener_loop(int port, const char *circbuf_fname);
 void errorMsgXML(char * msg);
 int  framePointersXML(int fd_circ);
 int  metaXML(int fd_circ, int mode); ///  mode: 0 - new (send headers), 1 - continue, 2 - finish
@@ -788,9 +818,9 @@ void errorMsgXML(char * msg)
 //! read pointer in fd_circ should be at the start of the frame to be sent
 //! mmap will be opened in this function
 
-int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage)
+int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int saveImage)
 {
-	const char HeadFileName[] = "/dev/jpeghead0";
+	//const char HeadFileName[] = "/dev/jpeghead0";
 	const char ExifFileName[] = "/dev/exif_exif";
 	int exifDataSize = 0;
 ///   int  exifIndexPointer=0;
@@ -811,13 +841,14 @@ int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage)
 	char * extension;
 
 ///   int metadata_start; //metadata pointer (in bytes, from the start of the ccam_dma_buf)
-	jpeg_start = lseek(fd_circ, 0, SEEK_CUR); //get the current read pointer
+	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR); //get the current read pointer
 	D(fprintf(stderr, "jpeg_start (long) = 0x%x\n", jpeg_start));
-	fd_head = open(HeadFileName, O_RDWR);
+	fd_head = open(fset->jphead_fn, O_RDWR);
 	if (fd_head < 0) { // check control OK
-		fprintf(stderr, "Error opening %s\n", HeadFileName);
+		fprintf(stderr, "Error opening %s\n", fset->jphead_fn);
 		return -1;
 	}
+	fset->jphead_fd = fd_head;
 	lseek(fd_head, jpeg_start + 1, SEEK_END); /// create JPEG header, find out it's size TODO:
 	head_size = lseek(fd_head, 0, SEEK_END);
 	if (head_size > JPEG_HEADER_MAXSIZE) {
@@ -826,10 +857,10 @@ int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage)
 		return -2;
 	}
 /*! find total buffer length (it is in defines, actually in c313a.h */
-	buff_size = lseek(fd_circ, 0, SEEK_END);
+	buff_size = lseek(fset->circbuf_fd, 0, SEEK_END);
 /*! restore file poinetr after lseek-ing the end */
-	lseek(fd_circ, jpeg_start, SEEK_SET);
-	D(fprintf(stderr, "position (longs) = 0x%x\n", (int)lseek(fd_circ, 0, SEEK_CUR)));
+	lseek(fset->circbuf_fd, jpeg_start, SEEK_SET);
+	D(fprintf(stderr, "position (longs) = 0x%x\n", (int)lseek(fset->circbuf_fd, 0, SEEK_CUR)));
 
 /*! now let's try mmap itself */
 ///   exifIndexPointer=jpeg_start-8;
@@ -840,7 +871,7 @@ int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage)
 		frameParamPointer, jpeg_start, buff_size);
 	memcpy(&frame_params, (unsigned long*)&ccam_dma_buf[frameParamPointer >> 2], sizeof(struct interframe_params_t));
 	jpeg_len = frame_params.frame_length;
-	//color_mode=frame_params.color;
+	color_mode = frame_params.color;
 	if (frame_params.signffff != 0xffff) {
 		fprintf(stderr, "wrong signature signff = 0x%x \n", (int)frame_params.signffff);
 		close(fd_head);
@@ -869,7 +900,7 @@ int  sendImage(int bufferImageData, int fd_circ, int use_Exif, int saveImage)
 
 	jpeg_full_size = jpeg_len + head_size + 2 + exifDataSize;
 
-	fprintf(stderr, "jpeg_len = 0x%x, head_size = 0x%x, exifDataSize = 0x%x, jpeg_full_size = 0z%x\n",
+	fprintf(stderr, "jpeg_len = 0x%x, head_size = 0x%x, exifDataSize = 0x%x, jpeg_full_size = 0x%x\n",
 		jpeg_len, head_size, exifDataSize, jpeg_full_size);
 
 	if (bufferImageData) jpeg_this_size = jpeg_full_size;           /// header+frame
@@ -1001,10 +1032,10 @@ void sendBuffer(void * buffer, int len)
 
 
 
-void listener_loop(int port)
+void listener_loop(struct file_set *fset)
 {
 	char errormsg[1024];
-	const char circbufFileName[] = "/dev/circbuf0";
+	//const char circbufFileName[] = "/dev/circbuf0";
 	int fd_circ;
 	int this_p; //! current frame pointer (bytes)
 	int rslt;
@@ -1012,7 +1043,6 @@ void listener_loop(int port)
 	int suggest_save_images = 0;
 	char buf [1024];
 	int len = 0;
-	int current_len;
 	char * cp, *cp1, *cp2;
 	int slow, skip;         // reduce frame rate by slow
 	int sent2socket = -1;   // 1 - img, 2 - meta, 3 - pointers
@@ -1022,7 +1052,7 @@ void listener_loop(int port)
 	int buff_size;
 
 	memset((char*)&sock, 0, sizeof(sock));
-	sock.sin_port = htons(port);
+	sock.sin_port = htons(fset->port_num);
 	sock.sin_family = AF_INET;
 	res = socket(AF_INET, SOCK_STREAM, 0);
 	setsockopt(res, SOL_SOCKET, SO_REUSEADDR, (char*)&one, sizeof(one));
@@ -1077,13 +1107,14 @@ void listener_loop(int port)
 				_exit(0);
 			}
 //!now process the commands one at a time, but first - open the circbuf file and setup the pointer
-			fd_circ = open(circbufFileName, O_RDWR);
+			fd_circ = open(fset->cirbuf_fn, O_RDWR);
 			if (fd_circ < 0) { // check control OK
-				fprintf(stderr, "Error opening %s\n", circbufFileName);
+				fprintf(stderr, "Error opening %s\n", fset->cirbuf_fn);
 				out1x1gif();
 				fflush(stdout);
 				_exit(0);
 			}
+			fset->circbuf_fd = fd_circ;
 /*! find total buffer length (it is in defines, actually in c313a.h */
 			buff_size = lseek(fd_circ, 0, SEEK_END);
 			fprintf(stderr, "%s: read circbuf size: %d\n", __func__, buff_size);
@@ -1119,7 +1150,7 @@ void listener_loop(int port)
 						buf_images = ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "simg") == 0)) ? 0 : 1;
 						suggest_save_images = ((strcmp(cp1, "simg") == 0) || (strcmp(cp1, "sbimg") == 0)) ? 1 : 0;
 						fprintf(stderr, "%s: sending image\n", __func__);
-						rslt = sendImage(buf_images, fd_circ, exif_enable, suggest_save_images); //! verify driver that file pointer did not move
+						rslt = sendImage(fset, buf_images, exif_enable, suggest_save_images); //! verify driver that file pointer did not move
 					}
 					sent2socket = 1;
 					if (rslt < 0) {
@@ -1151,7 +1182,7 @@ void listener_loop(int port)
 						rslt = 0;
 						while (rslt >= 0) {
 							printf("\r\n--ElphelMultipartJPEGBoundary\r\n");
-							rslt = sendImage(buf_images, fd_circ, exif_enable, 0); //! verify driver that file pointer did not move
+							rslt = sendImage(fset, buf_images, exif_enable, 0); //! verify driver that file pointer did not move
 							fflush(stdout);
 							if (rslt >= 0) for (skip = 0; skip < slow; skip++) {
 									this_p = lseek(fd_circ, LSEEK_CIRC_NEXT, SEEK_END);
@@ -1234,27 +1265,82 @@ void listener_loop(int port)
 	} // while (1)
 }
 
+int parse_cmd_line(int argc, const char *argv[], struct file_set *fset, int fset_sz)
+{
+	int port;
+	int i;
+
+	if ((argc < 3) || (strcasecmp(argv[1], "-p"))) {
+		printf(app_args, argv[0]);
+		printf(url_args);
+		return -1;
+	} else if (argc == 3) {
+		port = strtol(argv[2], NULL, 10);
+		if (!port) {
+			printf("Invalid port number %d\n", port);
+			return -1;
+		}
+		for (int i = 0; i < fset_sz; i++) {
+			fset[i].port_num = port + i;
+		}
+	} else if (argc > 3) {
+		i = 0;
+		// start parsing from first port number which is second positional parameter in cmd line
+		while ((i < fset_sz) && (i + 2 < argc)) {
+			port = strtol(argv[i + 2], NULL, 10);
+			if (!port) {
+				printf("Invalid port number %d\n", port);
+				return -1;
+			}
+			fset[i].port_num = port;
+			++i;
+		}
+		if (i < fset_sz - 1) {
+			printf("Wrong ports quantity\n");
+			return -1;
+		}
+	}
+
+	for (i = 0; i < fset_sz; i++) {
+		printf("Set port number: %d\n", fset[i].port_num);
+	}
+	return 0;
+}
+
+void init_file_set(struct file_set *fset, int fset_sz)
+{
+	for (int i = 0; i < fset_sz; i++) {
+		fset[i].cirbuf_fn = circbuf_fnames[i];
+		fset[i].circbuf_fd = -1;
+		fset[i].jphead_fn = jhead_fnames[i];
+		fset[i].jphead_fd = -1;
+		fset[i].port_num = 0;
+	}
+}
+
 /*! set port, start listening/answering HTTP requests */
 int main(int argc, char *argv[])
 {
-	const char usage[] =   "Usage:\n%s -p <port_number>\n" \
-			     "Start image server, bind it to port <port_number>\n";
+	int res = 0;
 
-	int port;
+	init_file_set(files, IMAGE_CHN_NUM);
+	res = parse_cmd_line(argc, (const char **)argv, files, IMAGE_CHN_NUM);
+	if (res < 0)
+		return EXIT_FAILURE;
 
-	if ((argc < 3) || (strcasecmp(argv[1], "-p"))) {
-		printf(usage, argv[0]);
-		printf(url_args);
-		return 0;
+	// no zombies, please!
+	if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
+		perror(argv[0]);
+		return EXIT_FAILURE;
 	}
-	port = strtol(argv[2], NULL, 10);
-	if (!port) {
-		printf("Invalid port number %d\n", port); return -1;
+
+	// spawn a process for each port
+	for (int i = 0; i < IMAGE_CHN_NUM; i++) {
+		if (fork() == 0) {
+			listener_loop(&files[i]);
+			_exit(0);               // should not get here?
+		}
 	}
-	signal(SIGCHLD, SIG_IGN);       // no zombies, please!
-	if (fork() == 0) {              // child
-		listener_loop(port);
-		_exit(0);               // should not get here?
-	} // end of child process
-	return 0;
+
+	return EXIT_SUCCESS;
 }
