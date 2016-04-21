@@ -864,12 +864,12 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 
 /*! now let's try mmap itself */
 ///   exifIndexPointer=jpeg_start-8;
-	frameParamPointer = jpeg_start - sizeof(struct interframe_params_t);
+	frameParamPointer = jpeg_start - sizeof(struct interframe_params_t) + 4;
 	if (frameParamPointer < 0)
 		frameParamPointer += buff_size;
 	fprintf(stderr, "frameParamPointer = 0x%x, jpeg_start = 0x%x, buff_size = 0x%x\n",
 		frameParamPointer, jpeg_start, buff_size);
-	memcpy(&frame_params, (unsigned long*)&ccam_dma_buf[frameParamPointer >> 2], sizeof(struct interframe_params_t));
+	memcpy(&frame_params, (unsigned long*)&ccam_dma_buf[frameParamPointer >> 2], sizeof(struct interframe_params_t) - 4);
 	jpeg_len = frame_params.frame_length;
 	color_mode = frame_params.color;
 	if (frame_params.signffff != 0xffff) {
