@@ -172,6 +172,7 @@
 #include <exifa.h>
 #include <asm/byteorder.h>
 
+#undef ELPHEL_DEBUG
 #if ELPHEL_DEBUG
   #define ELPHEL_DEBUG_THIS 1
 #else
@@ -598,55 +599,55 @@ int  metaXML(int fd_circ, int mode)   ///  mode: 0 - new (send headers), 1 - con
 	frameParamPointer = jpeg_start - 32;
 	if (frameParamPointer < 0) frameParamPointer += buff_size;
 	memcpy(&frame_params, (unsigned long* )&ccam_dma_buf[frameParamPointer >> 2], 32); /// ccam_dma_buf - global
-//   jpeg_len=frame_params.frame_length;
-///// Copy timestamp (goes after the image data)
-//   timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; //! magic shift - should index first byte of the time stamp
-//   if (timestamp_start >= buff_size) timestamp_start-=buff_size;
-//   memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
-/////TODO: Parse Exif data if available and add here
-//   printf ("<frame>\n" \
-//              "<start>    0x%x </start>\n" \
-//              "<hash32_r> 0x%x </hash32_r>\n" \
-//              "<hash32_g> 0x%x </hash32_g>\n" \
-//              "<hash32_gb>0x%x </hash32_gb>\n" \
-//              "<hash32_b> 0x%x </hash32_b>\n" \
-//              "<quality2> 0x%x </quality2>\n" \
-//              "<color> 0x%x </color>\n" \
-//              "<byrshift> 0x%x </byrshift>\n" \
-//              "<width> 0x%x </width>\n" \
-//              "<height> 0x%x </height>\n" \
-//              "<meta_index> 0x%x </meta_index>\n" \
-//              "<timestamp>  %ld.%06ld</timestamp>\n" \
-//              "<signffff> 0x%x </signffff>\n"
-//           , (int) jpeg_start
-//           , (int) frame_params.hash32_r
-//           , (int) frame_params.hash32_g
-//           , (int) frame_params.hash32_gb
-//           , (int) frame_params.hash32_b
-//           , (int) frame_params.quality2
-//           , (int) frame_params.color          /// color mode //18
-//           , (int) frame_params.byrshift       /// bayer shift in compressor //19
-//           , (int) frame_params.width          /// frame width, pixels   20-21 - NOTE: should be 20-21
-//           , (int) frame_params.height         /// frame height, pixels  22-23
-//           , (int) frame_params.meta_index     //! index of the linked meta page
-//           ,       frame_params.timestamp_sec
-//           ,       frame_params.timestamp_usec
-//           , (int) frame_params.signffff
-//           );
-/////28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
-/////28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
-/////          };
-/////32-35 unsigned long  timestamp_usec; //! number of microseconds to add
-//
-//   if (frame_params.signffff !=0xffff) {
-//     printf("<error>\"wrong signature (should be 0xffff)\"</error>\n");
-//   } else {
-/////Put Exif data here
-//     printf ("<Exif>\n");
-//     printExifXML(frame_params.meta_index);
-//     printf ("</Exif>\n");
-//   }
-//   printf ("</frame>\n");
+   jpeg_len=frame_params.frame_length;
+/// Copy timestamp (goes after the image data)
+   timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; //! magic shift - should index first byte of the time stamp
+   if (timestamp_start >= buff_size) timestamp_start-=buff_size;
+   memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
+///TODO: Parse Exif data if available and add here
+   printf ("<frame>\n" \
+              "<start>    0x%x </start>\n" \
+              "<hash32_r> 0x%x </hash32_r>\n" \
+              "<hash32_g> 0x%x </hash32_g>\n" \
+              "<hash32_gb>0x%x </hash32_gb>\n" \
+              "<hash32_b> 0x%x </hash32_b>\n" \
+              "<quality2> 0x%x </quality2>\n" \
+              "<color> 0x%x </color>\n" \
+              "<byrshift> 0x%x </byrshift>\n" \
+              "<width> 0x%x </width>\n" \
+              "<height> 0x%x </height>\n" \
+              "<meta_index> 0x%x </meta_index>\n" \
+              "<timestamp>  %ld.%06ld</timestamp>\n" \
+              "<signffff> 0x%x </signffff>\n"
+           , (int) jpeg_start
+           , (int) frame_params.hash32_r
+           , (int) frame_params.hash32_g
+           , (int) frame_params.hash32_gb
+           , (int) frame_params.hash32_b
+           , (int) frame_params.quality2
+           , (int) frame_params.color          /// color mode //18
+           , (int) frame_params.byrshift       /// bayer shift in compressor //19
+           , (int) frame_params.width          /// frame width, pixels   20-21 - NOTE: should be 20-21
+           , (int) frame_params.height         /// frame height, pixels  22-23
+           , (int) frame_params.meta_index     //! index of the linked meta page
+           ,       frame_params.timestamp_sec
+           ,       frame_params.timestamp_usec
+           , (int) frame_params.signffff
+           );
+///28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
+///28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
+///          };
+///32-35 unsigned long  timestamp_usec; //! number of microseconds to add
+
+   if (frame_params.signffff !=0xffff) {
+     printf("<error>\"wrong signature (should be 0xffff)\"</error>\n");
+   } else {
+///Put Exif data here
+     printf ("<Exif>\n");
+     printExifXML(frame_params.meta_index);
+     printf ("</Exif>\n");
+   }
+   printf ("</frame>\n");
 	return 0;
 }
 
