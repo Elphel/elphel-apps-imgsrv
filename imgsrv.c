@@ -200,6 +200,7 @@
 
 struct file_set {
 	unsigned short port_num;
+	unsigned char  sensor_num;
 	const char     *cirbuf_fn;
 	int            circbuf_fd;
 	const char     *jphead_fn;
@@ -598,55 +599,55 @@ int  metaXML(int fd_circ, int mode)   ///  mode: 0 - new (send headers), 1 - con
 	frameParamPointer = jpeg_start - 32;
 	if (frameParamPointer < 0) frameParamPointer += buff_size;
 	memcpy(&frame_params, (unsigned long* )&ccam_dma_buf[frameParamPointer >> 2], 32); /// ccam_dma_buf - global
-//   jpeg_len=frame_params.frame_length;
-///// Copy timestamp (goes after the image data)
-//   timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; //! magic shift - should index first byte of the time stamp
-//   if (timestamp_start >= buff_size) timestamp_start-=buff_size;
-//   memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
-/////TODO: Parse Exif data if available and add here
-//   printf ("<frame>\n" \
-//              "<start>    0x%x </start>\n" \
-//              "<hash32_r> 0x%x </hash32_r>\n" \
-//              "<hash32_g> 0x%x </hash32_g>\n" \
-//              "<hash32_gb>0x%x </hash32_gb>\n" \
-//              "<hash32_b> 0x%x </hash32_b>\n" \
-//              "<quality2> 0x%x </quality2>\n" \
-//              "<color> 0x%x </color>\n" \
-//              "<byrshift> 0x%x </byrshift>\n" \
-//              "<width> 0x%x </width>\n" \
-//              "<height> 0x%x </height>\n" \
-//              "<meta_index> 0x%x </meta_index>\n" \
-//              "<timestamp>  %ld.%06ld</timestamp>\n" \
-//              "<signffff> 0x%x </signffff>\n"
-//           , (int) jpeg_start
-//           , (int) frame_params.hash32_r
-//           , (int) frame_params.hash32_g
-//           , (int) frame_params.hash32_gb
-//           , (int) frame_params.hash32_b
-//           , (int) frame_params.quality2
-//           , (int) frame_params.color          /// color mode //18
-//           , (int) frame_params.byrshift       /// bayer shift in compressor //19
-//           , (int) frame_params.width          /// frame width, pixels   20-21 - NOTE: should be 20-21
-//           , (int) frame_params.height         /// frame height, pixels  22-23
-//           , (int) frame_params.meta_index     //! index of the linked meta page
-//           ,       frame_params.timestamp_sec
-//           ,       frame_params.timestamp_usec
-//           , (int) frame_params.signffff
-//           );
-/////28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
-/////28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
-/////          };
-/////32-35 unsigned long  timestamp_usec; //! number of microseconds to add
-//
-//   if (frame_params.signffff !=0xffff) {
-//     printf("<error>\"wrong signature (should be 0xffff)\"</error>\n");
-//   } else {
-/////Put Exif data here
-//     printf ("<Exif>\n");
-//     printExifXML(frame_params.meta_index);
-//     printf ("</Exif>\n");
-//   }
-//   printf ("</frame>\n");
+   jpeg_len=frame_params.frame_length;
+/// Copy timestamp (goes after the image data)
+   timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; //! magic shift - should index first byte of the time stamp
+   if (timestamp_start >= buff_size) timestamp_start-=buff_size;
+   memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
+///TODO: Parse Exif data if available and add here
+   printf ("<frame>\n" \
+              "<start>    0x%x </start>\n" \
+              "<hash32_r> 0x%x </hash32_r>\n" \
+              "<hash32_g> 0x%x </hash32_g>\n" \
+              "<hash32_gb>0x%x </hash32_gb>\n" \
+              "<hash32_b> 0x%x </hash32_b>\n" \
+              "<quality2> 0x%x </quality2>\n" \
+              "<color> 0x%x </color>\n" \
+              "<byrshift> 0x%x </byrshift>\n" \
+              "<width> 0x%x </width>\n" \
+              "<height> 0x%x </height>\n" \
+              "<meta_index> 0x%x </meta_index>\n" \
+              "<timestamp>  %ld.%06ld</timestamp>\n" \
+              "<signffff> 0x%x </signffff>\n"
+           , (int) jpeg_start
+           , (int) frame_params.hash32_r
+           , (int) frame_params.hash32_g
+           , (int) frame_params.hash32_gb
+           , (int) frame_params.hash32_b
+           , (int) frame_params.quality2
+           , (int) frame_params.color          /// color mode //18
+           , (int) frame_params.byrshift       /// bayer shift in compressor //19
+           , (int) frame_params.width          /// frame width, pixels   20-21 - NOTE: should be 20-21
+           , (int) frame_params.height         /// frame height, pixels  22-23
+           , (int) frame_params.meta_index     //! index of the linked meta page
+           ,       frame_params.timestamp_sec
+           ,       frame_params.timestamp_usec
+           , (int) frame_params.signffff
+           );
+///28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
+///28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
+///          };
+///32-35 unsigned long  timestamp_usec; //! number of microseconds to add
+
+   if (frame_params.signffff !=0xffff) {
+     printf("<error>\"wrong signature (should be 0xffff)\"</error>\n");
+   } else {
+///Put Exif data here
+     printf ("<Exif>\n");
+     printExifXML(frame_params.meta_index);
+     printf ("</Exif>\n");
+   }
+   printf ("</frame>\n");
 	return 0;
 }
 
@@ -874,6 +875,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	color_mode = frame_params.color;
 	if (frame_params.signffff != 0xffff) {
 		fprintf(stderr, "wrong signature signff = 0x%x \n", (int)frame_params.signffff);
+		lseek(fset->circbuf_fd, LSEEK_CIRC_STOP_COMPRESSOR, SEEK_END);
 		close(fd_head);
 		return -4;
 	}
@@ -976,6 +978,28 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	else printf("Content-Disposition: inline; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);                   /// opens in browser, asks to save on right-click
 
 	if (bufferImageData) {                                                                                                                  /*! Buffer the whole file before sending over the network to make sure it will not be corrupted if the circular buffer will be overrun) */
+		// tell driver to flush CPU caches
+		const char *fname = "/sys/devices/soc0/elphel393-mem@0/flush_cpu_cache";
+		char cmd[128] = {0};
+		int jpeg_end;
+		int cmd_len;
+//		int fd_sys = open(fname, O_RDWR);
+		unsigned long start_time, end_time;
+
+//		if (fd_sys < 0) {
+//			fprintf(stderr, "unable to open sysfs entry: %s\n", fname);
+//		} else {
+////			jpeg_end = jpeg_start + jpeg_len;
+//			jpeg_end = jpeg_start + (sizeof(struct interframe_params_t) - 4) * 512;
+//			if (jpeg_end > buff_size)
+//				jpeg_end -= buff_size;
+//			cmd_len = snprintf(cmd, 127, "%u:%d:%d", fset->sensor_num, jpeg_start, jpeg_end);
+//			if (write(fd_sys, cmd, cmd_len) == -1)
+//				fprintf(stderr, "failed to write to sysfs\n");
+//			close(fd_sys);
+//		}
+
+		start_time = lseek(fset->circbuf_fd, LSEEK_CIRC_UTIME, SEEK_END);
 		l = head_size + exifDataSize;
 /*! JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
 		if ((jpeg_start + jpeg_len) > buff_size) { // two segments
@@ -985,6 +1009,9 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		} else { /*! single segment */
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
 		}
+		end_time = lseek(fset->circbuf_fd, LSEEK_CIRC_UTIME, SEEK_END);
+		fprintf(stderr, "memcpy time = %lu\n", end_time - start_time);
+
 		memcpy(&jpeg_copy[jpeg_len + head_size + exifDataSize], trailer, 2);
 		printf("Content-Length: %d\r\n", jpeg_full_size);
 		printf("\r\n");
@@ -1315,6 +1342,7 @@ void init_file_set(struct file_set *fset, int fset_sz)
 		fset[i].jphead_fn = jhead_fnames[i];
 		fset[i].jphead_fd = -1;
 		fset[i].port_num = 0;
+		fset[i].sensor_num = i;
 	}
 }
 
