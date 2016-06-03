@@ -9,6 +9,9 @@
       dlen: length of a variable data field, stored in frame buffer
       ltag: Exif_tag+(group<<16). If specified, is used by the software, while the Exif output will still have tag
       SubSecTimeOriginal should go immediately after DateTimeOriginal (in the sequence numbers, not in the Exif templete)
+      
+      Update, June 2016: PageNumber field is used as sensor port number, HostComputer field is replaced with CameraSerialNumber and
+            FrameNumber field (which actually was IPTCNAA field) is replaced with standart ImageNumber field.
     -->
 <Exif>
  <Image>
@@ -22,9 +25,10 @@
    <DateTime tag="0x0132" format="ASCII" count="20"  seq="1" dlen="20">
      <value>2001:06:21 12:00:00</value>
    </DateTime>
-   <HostComputer tag="0x013c" format="ASCII" function="SERIAL"/>
-   <FrameNumber  tag="0x83bb" format="LONG" count="1"  seq="25" dlen="4"/>
+   <CameraSerialNumber tag="0xc62f" format="ASCII" function="SERIAL"/>
+   <ImageNumber  tag="0x9211" format="LONG" count="1"  seq="25" dlen="4"/>
    <Orientation  tag="0x112"  format="SHORT" count="1"  seq="27" dlen="2"/>
+   <PageNumber   tag="0x129"  format="SHORT" count="1"  seq="28" dlen="2"/>
    <ExifTag tag="0x8769" format="LONG" function="EXIFTAG"/>
    <GPSTag tag="0x08825" format="LONG" function="GPSTAG"/>
  </Image>
