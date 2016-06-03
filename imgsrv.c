@@ -289,7 +289,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	while (read(fd_exifdir, &dir_table_entry, sizeof(dir_table_entry)) > 0) {
 		switch (dir_table_entry.ltag) {
 		case Exif_Image_ImageDescription:      indx = Exif_Image_ImageDescription_Index; break;
-		case Exif_Image_FrameNumber:           indx = Exif_Image_FrameNumber_Index; break;
+		case Exif_Image_ImageNumber:           indx = Exif_Image_ImageNumber_Index; break;
 		case Exif_Photo_DateTimeOriginal:      indx = Exif_Photo_DateTimeOriginal_Index; break;
 		case Exif_Photo_SubSecTimeOriginal:    indx = Exif_Photo_SubSecTimeOriginal_Index; break;
 		case Exif_Photo_ExposureTime:          indx = Exif_Photo_ExposureTime_Index; break;
@@ -349,14 +349,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 		saferead255(fd_exif, val, exif_dir[Exif_Image_ImageDescription_Index].len);
 		printf("<ImageDescription>\"%s\"</ImageDescription>\n", val);
 	}
-	///Exif_Image_FrameNumber_Index           0x13
-	if (exif_dir[Exif_Image_FrameNumber_Index].ltag == Exif_Image_FrameNumber) { // Exif_Image_FrameNumber_Index is present in template
+	///Exif_Image_ImageNumber_Index           0x13
+	if (exif_dir[Exif_Image_ImageNumber_Index].ltag == Exif_Image_ImageNumber) { // Exif_Image_ImageNumber_Index is present in template
 		lseek(fd_exif,
-				exif_page_start + exif_dir[Exif_Image_FrameNumber_Index].dst,
+				exif_page_start + exif_dir[Exif_Image_ImageNumber_Index].dst,
 				SEEK_SET);
 		read(fd_exif, rational3, 4);
 		sprintf(val, "%ld", (long)__cpu_to_be32( rational3[0]));
-		printf("<FrameNumber>\"%s\"</FrameNumber>\n", val);
+		printf("<ImageNumber>\"%s\"</ImageNumber>\n", val);
 	}
 
 	///Exif_Image_Orientation_Index           0x14
