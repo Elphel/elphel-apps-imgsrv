@@ -85,6 +85,8 @@
 // use http://www.exiv2.org/tags.html  for reference of the Exif fields if you need to add modify
 // the data below
 
+$chn = 0;
+
 $ExifDeviceTemplateFilename="/dev/exif_template";
 $ExifDeviceMetadirFilename= "/dev/exif_metadir";
 $ExifDeviceExifFilename=    "/dev/exif_exif";
@@ -107,6 +109,9 @@ if ($_SERVER['REQUEST_METHOD']=="GET") {
 		$noGPS=     ($_GET["noGPS"]!==NULL);
 		$nocompass= ($_GET["nocompass"]!==NULL);
 	}
+	if (isset($_GET['chn'])) $chn = $_GET['chn'];
+	$ExifDeviceExifFilename .= $chn;
+        $ExifDeviceMetaFilename .= $chn;
 } else {
 	foreach ($_SERVER['argv'] as $param) if (substr($param,0,4)=="init") {
 		$param=substr($param,5);
