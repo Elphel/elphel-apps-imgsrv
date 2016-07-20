@@ -1,152 +1,20 @@
-/*!***************************************************************************
- *! FILE NAME  : imgsrv.c
- *! DESCRIPTION: Simple and fast HTTP server to send camera still images
- *! Copyright (C) 2007-2008 Elphel, Inc.
- *! -----------------------------------------------------------------------------**
- *!  This program is free software: you can redistribute it and/or modify
- *!  it under the terms of the GNU General Public License as published by
- *!  the Free Software Foundation, either version 3 of the License, or
- *!  (at your option) any later version.
- *!
- *!  This program is distributed in the hope that it will be useful,
- *!  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *!  GNU General Public License for more details.
- *!
- *!  You should have received a copy of the GNU General Public License
- *!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *! -----------------------------------------------------------------------------**
- *!
- *!  $Log: imgsrv.c,v $
- *!  Revision 1.15  2014/06/25 23:32:26  dzhimiev
- *!  1. fixed imgsrv /n -> /r/n
- *!  2. updated revision number
- *!
- *!  Revision 1.14  2012/04/08 04:11:28  elphel
- *!  8.2.2 changes related to temperatures measurement and embedding in the Exif MakerNote
- *!
- *!  Revision 1.13  2011/12/22 05:33:06  elphel
- *!  Added trigger command
- *!
- *!  Revision 1.12  2010/08/16 17:10:24  elphel
- *!  added reporting frame number (for inter-camera synchronization)
- *!
- *!  Revision 1.11  2010/08/10 21:14:31  elphel
- *!  8.0.8.39 - added EEPROM support for multiplexor and sensor boards, so autocampars.php uses application-specific defaults. Exif Orientation tag support, camera Model reflects application and optional mode (i.e. camera number in Eyesis)
- *!
- *!  Revision 1.10  2010/08/03 06:13:51  elphel
- *!  bugfix - was not copying last 8 bytes of MakerNote
- *!
- *!  Revision 1.9  2010/08/01 19:30:24  elphel
- *!  new readonly parameter FRAME_SIZE and it support in the applications
- *!
- *!  Revision 1.8  2010/07/20 20:13:34  elphel
- *!  8.0.8.33 - added MakerNote info for composite images made with multisensor cameras (with 10359 board)
- *!
- *!  Revision 1.7  2010/03/04 06:41:40  elphel
- *!  8.0.7.3 - more data to makerNote
- *!
- *!  Revision 1.6  2010/02/18 22:59:26  elphel
- *!  8.0.7.1 - file extension/mime type depends on color mode now (*.jpeg, *.jp4, *.jp46)
- *!
- *!  Revision 1.5  2009/12/28 06:24:17  elphel
- *!  8.0.6.6 - added MakerNote to Exif, it icludes channels gains and gammas/black levels
- *!
- *!  Revision 1.4  2009/10/12 19:20:23  elphel
- *!  Added "Content-Disposition" support to suggest filenames to save images
- *!
- *!  Revision 1.3  2009/02/25 17:47:51  spectr_rain
- *!  removed deprecated dependency
- *!
- *!  Revision 1.2  2009/02/18 06:25:41  elphel
- *!  fixed unterminated string of 1 character (GPS mode - 2/3)
- *!
- *!  Revision 1.1.1.1  2008/11/27 20:04:01  elphel
- *!
- *!
- *!  Revision 1.11  2008/11/03 18:42:21  elphel
- *!  comment typo
- *!
- *!  Revision 1.10  2008/10/29 04:18:28  elphel
- *!  v.8.0.alpha10 made a separate structure for global parameters (not related to particular frames in a frame queue)
- *!
- *!  Revision 1.9  2008/10/25 19:51:40  elphel
- *!  updated copyright year
- *!
- *!  Revision 1.8  2008/10/21 21:28:52  elphel
- *!  support for xml meta output
- *!
- *!  Revision 1.7  2008/10/13 16:55:53  elphel
- *!  removed (some) obsolete P_* parameters, renamed CIRCLSEEK to LSEEK_CIRC constants (same as other similar)
- *!
- *!  Revision 1.6  2008/10/11 18:46:07  elphel
- *!  snapshot
- *!
- *!  Revision 1.5  2008/10/06 08:31:08  elphel
- *!  snapshot, first images
- *!
- *!  Revision 1.4  2008/09/07 19:48:08  elphel
- *!  snapshot
- *!
- *!  Revision 1.3  2008/08/11 19:10:45  elphel
- *!  reduced syntax "complaints" from KDevelop
- *!
- *!  Revision 1.2  2008/05/16 06:06:54  elphel
- *!  supporting variable JPEG header length
- *!
- *!  Revision 1.14  2008/04/22 22:14:56  elphel
- *!  Added malloc failures handling, syslog logging of such events
- *!
- *!  Revision 1.13  2008/04/16 20:30:33  elphel
- *!  added optional fps reduction to multipart JPEGs
- *!
- *!  Revision 1.11  2008/04/07 09:13:35  elphel
- *!  Changes related to new Exif generation/processing
- *!
- *!  Revision 1.10  2008/03/22 04:39:53  elphel
- *!  remove complaints about "&_time=..."
- *!
- *!  Revision 1.9  2007/12/03 08:28:45  elphel
- *!  Multiple changes, mostly cleanup
- *!
- *!  Revision 1.8  2007/11/16 08:56:19  elphel
- *!  Added support for 2 additional commands to check circbuf usage
- *!
- *!  Revision 1.7  2007/11/04 23:25:16  elphel
- *!  removed extra (used during debug) munmap that caused segfault after sending "img" (so no /nxt/save)
- *!
- *!  Revision 1.6  2007/11/04 05:47:40  elphel
- *!  Cleaned up from debug code inserted to fight mmap/caching bug (fixed by now)
- *!
- *!  Revision 1.5  2007/11/01 18:59:37  elphel
- *!  debugging mmap/caching problems
- *!
- *!  Revision 1.4  2007/10/30 16:56:06  elphel
- *!  release 7.1.4.5 - working on "can not find 0xffff in frame parameters" bug. Temporary fix
- *!
- *!  Revision 1.3  2007/10/27 00:55:32  elphel
- *!  untested revision - need to go
- *!
- *!  Revision 1.2  2007/10/11 06:42:28  elphel
- *!  Fixed bug - /meta command should return trivial xml file, not 1x1 pixel gif
- *!
- *!  Revision 1.1.1.1  2007/10/02 19:44:54  elphel
- *!  This is a fresh tree based on elphel353-2.10
- *!
- *!  Revision 1.4  2007/10/02 19:44:54  elphel
- *!  More functionality (buffer manipulation commands, clean interface, xml responces)
- *!
- *!  Revision 1.3  2007/09/29 16:21:25  elphel
- *!  removed IOCTL usage from /dev/circbuf, improved comments, other minor changes
- *!
- *!  Revision 1.2  2007/09/25 23:35:16  elphel
- *!  added Exif initialization, made it to work in background mode
- *!
- *!  Revision 1.1  2007/09/23 06:49:10  elphel
- *!  Simple web server designed for particular task - serving camera JPEG images. It is faster, than through any of the web servers tested. Only some of the functionality is implemented (no Exif yet, no synchronization with the camera)
- *!
- *!
+/** @file imgsrv.c
+ * @brief Simple and fast HTTP server to send camera still images
+ * @copyright Copyright (C) 2007-2016 Elphel, Inc.
+ *
+ * @par <b>License</b>
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,7 +31,7 @@
 #include <syslog.h>
 
 #include <netinet/in.h>
-#include <sys/mman.h>           /* mmap */
+#include <sys/mman.h>
 #include <sys/ioctl.h>
 
 //#include <elphel/c313a.h>
@@ -186,12 +54,36 @@
 #define D(x)
 #endif
 
-// HEADER_SIZE is defined to be larger than actual header (later - with EXIF) to use compile-time buffer
-#define JPEG_HEADER_MAXSIZE       0x300 // will not change
+/** @brief HEADER_SIZE is defined to be larger than actual header (with EXIF) to use compile-time buffer */
+#define JPEG_HEADER_MAXSIZE       0x300
+/** @brief The size of trailing marker */
 #define TRAILER_SIZE              0x02
-/** @brief the length of MakerNote buffer in @e long */
+/** @brief The length of MakerNote buffer in @e long */
 #define MAKERNOTE_LEN             16
 
+/**
+ * @struct file_set
+ * This structure holds a set of file names and file descriptors corresponding to
+ * one sensor port.
+ * @var file_set::port_num
+ * Sensor port number this set corresponds to
+ * @var file_set::cirbuf_fn
+ * The file name of circular buffer
+ * @var file_set::circbuf_fd
+ * The file descriptor of circular buffer
+ * @var file_set::jphead_fn
+ * The file name of JPEG header buffer
+ * @var file_set::jphead_fd
+ * The file descriptor of JPEG header buffer
+ * @var file_set::exif_dev_name
+ * The file name of Exif buffer
+ * @var file_set::exif_dev_fd
+ * The file descriptor of Exif buffer
+ * @var file_set::exifmeta_dev_name
+ * The file name of Exif meta buffer
+ * @var file_set::exifmeta_dev_fd
+ * The file descriptor of Exif meta buffer
+ */
 struct file_set {
 	unsigned short port_num;
 	const char     *cirbuf_fn;
@@ -205,7 +97,7 @@ struct file_set {
 };
 static struct file_set  files[SENSOR_PORTS];
 
-unsigned long * ccam_dma_buf;           /* mmapped array */
+unsigned long * ccam_dma_buf;
 char trailer[TRAILER_SIZE] = { 0xff, 0xd9 };
 const char *circbuf_fnames[] = {
 		"/dev/circbuf0",
@@ -229,9 +121,9 @@ const char app_args[] = "Usage:\n%s -p <port_number_1> [<port_number_2> <port_nu
 
 const char url_args[] = "This server supports sequence of commands entered in the URL (separated by \"/\", case sensitive )\n"
 		"executing them from left to right as they appear in the URL\n"
-		"img -         send image at the current pointer (if it is first command - use last acquired image, if none availabe - send 1x1 gif)\n"
+		"img -         send image at the current pointer (if it is first command - use last acquired image, if none available - send 1x1 gif)\n"
 		"bimg -        same as above, but save the whole image in the memory before sending - useful to avoid overruns with slow connection \n"
-		"simg, sbimg - similar to img, bimg but will imemdiately suggest to save instead of opening image in the browser\n"
+		"simg, sbimg - similar to img, bimg but will immediately suggest to save instead of opening image in the browser\n"
 		"mimg[n] -     send images as a multipart JPEG (all commands after will be ignored), possible to specify optional fps reduction\n"
 		"              i.e. mimg4 - skip 3 frames for each frame output (1/4 fps) \n"
 		"bmimg[n] -    same as above, buffered\n"
@@ -242,7 +134,7 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"are present in the URL 1x1 pixel gif will be returned to the client after executing the URL command.\n\n"
 		"torp -   set frame pointer to global read pointer, maintained by the camera driver. If frame at that pointer\n"
 		"         is invalid, use scnd (see below)\n"
-		"towp -   set frame pointer to hardware write pointer - position where next frame will be aquired\n"
+		"towp -   set frame pointer to hardware write pointer - position where next frame will be acquired\n"
 		"prev -   move to previous frame in buffer, nop if there are none\n"
 		"next -   move to the next frame in buffer (will stop at write pointer, see towp above)\n"
 		"last -   move to the most recently acquired frame, or to write pointer if there are none.\n"
@@ -264,27 +156,35 @@ void sendBuffer(void * buffer, int len);
 void listener_loop(struct file_set *fset);
 void errorMsgXML(char * msg);
 int  framePointersXML(struct file_set *fset);
-int  metaXML(struct file_set *fset, int mode); ///  mode: 0 - new (send headers), 1 - continue, 2 - finish
+int  metaXML(struct file_set *fset, int mode); // mode: 0 - new (send headers), 1 - continue, 2 - finish
 int  printExifXML(int exif_page, struct file_set *fset);
 int  out1x1gif(void);
 void waitFrameSync();
 unsigned long  getCurrentFrameNumber();
 
+/** @brief Read no more then 255 bytes from file */
 #define saferead255(f, d, l) read(f, d, ((l) < 256) ? (l) : 255)
+
+/**
+ * @brief Print Exif data in XML format to @e stdout
+ * @param[in]   exif_page   page number in Exif buffer
+ * @param[in]   fset        file set for which the data should be printed
+ * @return      0 if data was extracted successfully and negative error code otherwise
+ */
 int printExifXML(int exif_page, struct file_set *fset)
 {
 	int indx;
 	long numfields = 0;
 	struct exif_dir_table_t dir_table_entry;
 	int fd_exifdir;
-	struct exif_dir_table_t exif_dir[ExifKmlNumber]; /// store locations of the fields needed for KML generations in the Exif block
+	struct exif_dir_table_t exif_dir[ExifKmlNumber]; // store locations of the fields needed for KML generations in the Exif block
 
-	/// Create Exif directory
-	///  Read the size  of the Exif data
+	// Create Exif directory
+	// Read the size  of the Exif data
 	fd_exifdir = open(EXIFDIR_DEV_NAME, O_RDONLY);
 	if (fd_exifdir < 0) {
 		printf("<error>\"Opening %s\"</error>\n", EXIFDIR_DEV_NAME);
-		return -2; /// Error opening Exif directory
+		return -2; // Error opening Exif directory
 	}
 	for (indx = 0; indx < ExifKmlNumber; indx++) exif_dir[indx].ltag = 0;
 	while (read(fd_exifdir, &dir_table_entry, sizeof(dir_table_entry)) > 0) {
@@ -321,7 +221,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	}
 	close(fd_exifdir);
 
-	/// Create XML files itself
+	// Create XML files itself
 	long rational3[6];
 	long makerNote[MAKERNOTE_LEN];
 	long exif_page_start;
@@ -336,13 +236,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 		return -3;
 	}
 	fset->exif_dev_fd = fd_exif;
-	exif_page_start = lseek(fd_exif, exif_page, SEEK_END); /// select specified Exif page
+	exif_page_start = lseek(fd_exif, exif_page, SEEK_END); // select specified Exif page
 	if (exif_page_start < 0) {
 		printf("<error>\"Exif page (%d) is out of range\"</error>\n", exif_page);
 		close(fd_exif);
-		return -1; /// Error opening Exif
+		return -1; // Error opening Exif
 	}
-	///Image Description
+	// Image Description
 	if (exif_dir[Exif_Image_ImageDescription_Index].ltag == Exif_Image_ImageDescription) { // Exif_Image_ImageDescription is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Image_ImageDescription_Index].dst,
@@ -350,7 +250,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		saferead255(fd_exif, val, exif_dir[Exif_Image_ImageDescription_Index].len);
 		printf("<ImageDescription>\"%s\"</ImageDescription>\n", val);
 	}
-	///Exif_Image_ImageNumber_Index           0x13
+	// Exif_Image_ImageNumber_Index           0x13
 	if (exif_dir[Exif_Image_ImageNumber_Index].ltag == Exif_Image_ImageNumber) { // Exif_Image_ImageNumber_Index is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Image_ImageNumber_Index].dst,
@@ -360,7 +260,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<ImageNumber>\"%s\"</ImageNumber>\n", val);
 	}
 
-	///Exif_Image_Orientation_Index           0x14
+	// Exif_Image_Orientation_Index           0x14
 	if (exif_dir[Exif_Image_Orientation_Index].ltag == Exif_Image_Orientation) { // Exif_Image_Orientation_Index is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Image_Orientation_Index].dst,
@@ -382,7 +282,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<SensorNumber>\"%s\"</SensorNumber>\n", val);
 	}
 
-	///DateTimeOriginal (with subseconds)
+	// DateTimeOriginal (with subseconds)
 	if (exif_dir[Exif_Photo_DateTimeOriginal_Index].ltag == Exif_Photo_DateTimeOriginal) {
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Photo_DateTimeOriginal_Index].dst,
@@ -399,7 +299,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		}
 		printf("<DateTimeOriginal>\"%s\"</DateTimeOriginal>\n", val);
 	}
-	///Exif_Photo_ExposureTime
+	// Exif_Photo_ExposureTime
 	if (exif_dir[Exif_Photo_ExposureTime_Index].ltag == Exif_Photo_ExposureTime) { // Exif_Photo_ExposureTime is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Photo_ExposureTime_Index].dst,
@@ -410,7 +310,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<ExposureTime>\"%s\"</ExposureTime>\n", val);
 	}
 
-	///Exif_Photo_MakerNote
+	// Exif_Photo_MakerNote
 	if (exif_dir[Exif_Photo_MakerNote_Index].ltag == Exif_Photo_MakerNote) { // Exif_Photo_MakerNote is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_Photo_MakerNote_Index].dst,
@@ -437,7 +337,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<MakerNote>\"%s\"</MakerNote>\n", val);
 	}
 
-	/// GPS measure mode
+	// GPS measure mode
 	if (exif_dir[Exif_GPSInfo_GPSMeasureMode_Index].ltag == Exif_GPSInfo_GPSMeasureMode) {
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_GPSMeasureMode_Index].dst,
@@ -447,7 +347,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<GPSMeasureMode>\"%s\"</GPSMeasureMode>\n", val);
 	}
 
-	///GPS date/time
+	// GPS date/time
 	if (exif_dir[Exif_GPSInfo_GPSDateStamp_Index].ltag == Exif_GPSInfo_GPSDateStamp) {
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_GPSDateStamp_Index].dst,
@@ -461,14 +361,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 			read(fd_exif, rational3, 24);
 			hours =   __cpu_to_be32( rational3[0]);
 			minutes = __cpu_to_be32( rational3[2]);
-			seconds = (1.0 * (__cpu_to_be32( rational3[4]) + 1)) / __cpu_to_be32( rational3[5]); /// GPS likes ".999", let's inc by one - anyway will round that out
+			seconds = (1.0 * (__cpu_to_be32( rational3[4]) + 1)) / __cpu_to_be32( rational3[5]); // GPS likes ".999", let's inc by one - anyway will round that out
 			sprintf(&val[10], " %02d:%02d:%05.2f", hours, minutes, seconds);
 		}
 		printf("<GPSDateTime>\"%s\"</GPSDateTime>\n", val);
 	}
 
-	/// knowing format provided from GPS - degrees and minutes only, no seconds:
-	///GPS Longitude
+	// knowing format provided from GPS - degrees and minutes only, no seconds:
+	// GPS Longitude
 	if (exif_dir[Exif_GPSInfo_GPSLongitude_Index].ltag == Exif_GPSInfo_GPSLongitude) { // Exif_GPSInfo_GPSLongitude is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_GPSLongitude_Index].dst,
@@ -485,7 +385,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		sprintf(val, "%f", longitude);
 		printf("<GPSLongitude>\"%s\"</GPSLongitude>\n", val);
 	}
-	///GPS Latitude
+	// GPS Latitude
 	if (exif_dir[Exif_GPSInfo_GPSLatitude_Index].ltag == Exif_GPSInfo_GPSLatitude) { // Exif_GPSInfo_GPSLatitude is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_GPSLatitude_Index].dst,
@@ -502,7 +402,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		sprintf(val, "%f", latitude);
 		printf("<GPSLatitude>\"%s\"</GPSLatitude>\n", val);
 	}
-	///GPS Altitude
+	// GPS Altitude
 	if (exif_dir[Exif_GPSInfo_GPSAltitude_Index].ltag == Exif_GPSInfo_GPSAltitude) { // Exif_GPSInfo_GPSAltitude is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_GPSAltitude_Index].dst,
@@ -520,7 +420,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		sprintf(val, "%f", altitude);
 		printf("<GPSAltitude>\"%s\"</GPSAltitude>\n", val);
 	}
-	///Compass Direction (magnetic)
+	// Compass Direction (magnetic)
 	if (exif_dir[Exif_GPSInfo_CompassDirection_Index].ltag == Exif_GPSInfo_CompassDirection) { // Exif_GPSInfo_CompassDirection is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_CompassDirection_Index].dst,
@@ -530,8 +430,8 @@ int printExifXML(int exif_page, struct file_set *fset)
 		sprintf(val, "%f", heading);
 		printf("<CompassDirection>\"%s\"</CompassDirection>\n", val);
 	}
-	///Processing 'hacked' pitch and roll (made of Exif destination latitude/longitude)
-	///Compass Roll
+	// Processing 'hacked' pitch and roll (made of Exif destination latitude/longitude)
+	// Compass Roll
 	if (exif_dir[Exif_GPSInfo_CompassRoll_Index].ltag == Exif_GPSInfo_CompassRoll) { // Exif_GPSInfo_CompassRoll is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_CompassRoll_Index].dst,
@@ -550,7 +450,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<CompassRoll>\"%s\"</CompassRoll>\n", val);
 	}
 
-	///Compass Pitch
+	// Compass Pitch
 	if (exif_dir[Exif_GPSInfo_CompassPitch_Index].ltag == Exif_GPSInfo_CompassPitch) { // Exif_GPSInfo_CompassPitch is present in template
 		lseek(fd_exif,
 				exif_page_start + exif_dir[Exif_GPSInfo_CompassPitch_Index].dst,
@@ -572,17 +472,29 @@ int printExifXML(int exif_page, struct file_set *fset)
 	return 0;
 }
 
-int  metaXML(struct file_set *fset, int mode)   ///  mode: 0 - new (send headers), 1 - continue, 2 - finish
+/**
+ * @brief Print frame parameters and Exif data to @e stdout
+ * @param[in]   fset   file set for which the data should be printed
+ * @param[in]   mode   mode of operation. Can be one of the following:
+ * mode | action
+ * -----|-------
+ * 0    | send new page including HTTP header
+ * 1    | continue sending XML tags
+ * 2    | finish and send closing XML tag
+ * @return      0 if data was sent successfully and -1 if a frame was not found at
+ * the location pointer by JPEG pointer
+ */
+int  metaXML(struct file_set *fset, int mode)
 {
 	int frameParamPointer = 0;
 	struct interframe_params_t frame_params;
 	int jpeg_len, jpeg_start, buff_size, timestamp_start;
 	int fd_circ = fset->circbuf_fd;
 
-	if (mode == 2) { /// just close the xml file
+	if (mode == 2) { // just close the xml file
 		printf("</meta>\n");
 		return 0;
-	} else if (mode == 0) { /// open the XML output (length is undefined - multiple frames meta data might be output)
+	} else if (mode == 0) { // open the XML output (length is undefined - multiple frames meta data might be output)
 		printf("HTTP/1.0 200 OK\r\n");
 		printf("Server: Elphel Imgsrv\r\n");
 		printf("Content-Type: text/xml\r\n");
@@ -599,18 +511,17 @@ int  metaXML(struct file_set *fset, int mode)   ///  mode: 0 - new (send headers
 		return -1;
 	}
 	buff_size = lseek(fd_circ, 0, SEEK_END);
-	/// restore file poinetr after lseek-ing the end
+	// restore file pointer after lseek-ing the end
 	lseek(fd_circ, jpeg_start, SEEK_SET);
 
 	frameParamPointer = jpeg_start - 32;
 	if (frameParamPointer < 0) frameParamPointer += buff_size;
-	memcpy(&frame_params, (unsigned long* )&ccam_dma_buf[frameParamPointer >> 2], 32); /// ccam_dma_buf - global
+	memcpy(&frame_params, (unsigned long* )&ccam_dma_buf[frameParamPointer >> 2], 32); // ccam_dma_buf - global
 	jpeg_len=frame_params.frame_length;
-	/// Copy timestamp (goes after the image data)
-	timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; //! magic shift - should index first byte of the time stamp
+	// Copy timestamp (goes after the image data)
+	timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; // magic shift - should index first byte of the time stamp
 	if (timestamp_start >= buff_size) timestamp_start-=buff_size;
 	memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
-	///TODO: Parse Exif data if available and add here
 	printf ("<frame>\n" \
 			"<start>    0x%x </start>\n" \
 			"<hash32_r> 0x%x </hash32_r>\n" \
@@ -631,24 +542,24 @@ int  metaXML(struct file_set *fset, int mode)   ///  mode: 0 - new (send headers
 			, (int) frame_params.hash32_gb
 			, (int) frame_params.hash32_b
 			, (int) frame_params.quality2
-			, (int) frame_params.color          /// color mode //18
-			, (int) frame_params.byrshift       /// bayer shift in compressor //19
-			, (int) frame_params.width          /// frame width, pixels   20-21 - NOTE: should be 20-21
-			, (int) frame_params.height         /// frame height, pixels  22-23
-			, (int) frame_params.meta_index     //! index of the linked meta page
+			, (int) frame_params.color          // color mode //18
+			, (int) frame_params.byrshift       // bayer shift in compressor //19
+			, (int) frame_params.width          // frame width, pixels   20-21 - NOTE: should be 20-21
+			, (int) frame_params.height         // frame height, pixels  22-23
+			, (int) frame_params.meta_index     // index of the linked meta page
 			,       frame_params.timestamp_sec
 			,       frame_params.timestamp_usec
 			, (int) frame_params.signffff
 	);
-	///28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
-	///28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
-	///          };
-	///32-35 unsigned long  timestamp_usec; //! number of microseconds to add
+	// 28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
+	// 28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
+	//          };
+	// 32-35 unsigned long  timestamp_usec; //! number of microseconds to add
 
 	if (frame_params.signffff !=0xffff) {
 		printf("<error>\"wrong signature (should be 0xffff)\"</error>\n");
 	} else {
-		///Put Exif data here
+		// Put Exif data here
 		printf ("<Exif>\n");
 		printExifXML(frame_params.meta_index, fset);
 		printf ("</Exif>\n");
@@ -657,6 +568,10 @@ int  metaXML(struct file_set *fset, int mode)   ///  mode: 0 - new (send headers
 	return 0;
 }
 
+/**
+ * @brief Read current frame number from frame parameters buffer
+ * @return frame number
+ */
 unsigned long  getCurrentFrameNumber()
 {
 	const char ctlFileName[] = "/dev/frameparsall";
@@ -667,15 +582,24 @@ unsigned long  getCurrentFrameNumber()
 	return frame_number;
 }
 
+/**
+ * @brief Wait for the next frame to be captured
+ * @return None
+ */
 void waitFrameSync()
 {
 	const char ctlFileName[] = "/dev/frameparsall";
 	int fd_fparmsall = open(ctlFileName, O_RDWR);
 
-	lseek(fd_fparmsall, LSEEK_FRAME_WAIT_REL + 1, SEEK_END); /// skip 1 frame before returning
+	lseek(fd_fparmsall, LSEEK_FRAME_WAIT_REL + 1, SEEK_END); // skip 1 frame before returning
 	close(fd_fparmsall);
 }
 
+/**
+ * @brief Read circular buffer pointers and write them to @e stdout in XML format
+ * @param[in]   fset   file set for which the data should be printed
+ * @return      0 if data was sent successfully and -1 in case of an error
+ */
 int framePointersXML(struct file_set *fset)
 {
 	const char ctlFileName[] = "/dev/frameparsall";
@@ -685,7 +609,7 @@ int framePointersXML(struct file_set *fset)
 	int nf = 0;
 	int nfl = 0;
 	int buf_free, buf_used, frame_size;
-	int save_p; //! save current file pointer, then restore it before return
+	int save_p; // save current file pointer, then restore it before return
 	int frame8, frame_number, sensor_state, compressor_state;
 	char *cp_sensor_state, *cp_compressor_state;
 
@@ -701,7 +625,7 @@ int framePointersXML(struct file_set *fset)
 		return -1;
 	}
 
-	//! now try to mmap
+	// now try to mmap
 	frameParsAll = (struct framepars_all_t**)mmap(0, sizeof(struct framepars_all_t), PROT_READ, MAP_SHARED, fd_fparmsall, 0);
 	if ((int)frameParsAll == -1) {
 		frameParsAll = NULL;
@@ -732,9 +656,9 @@ int framePointersXML(struct file_set *fset)
 					"COMPRESSOR_RUN_SINGLE" :
 					((compressor_state == 2) ? "COMPRESSOR_RUN_CONT" : "UNKNOWN"));
 
-	save_p = lseek(fd_circ, 0, SEEK_CUR);           //!save current file pointer before temporarily moving it
-	rp = lseek(fd_circ, LSEEK_CIRC_TORP, SEEK_END); //! set current rp global rp (may be invalid <0)
-	wp = lseek(fd_circ, LSEEK_CIRC_TOWP, SEEK_END); //! set current rp pointer to FPGA write pointer
+	save_p = lseek(fd_circ, 0, SEEK_CUR);           // save current file pointer before temporarily moving it
+	rp = lseek(fd_circ, LSEEK_CIRC_TORP, SEEK_END); // set current rp global rp (may be invalid <0)
+	wp = lseek(fd_circ, LSEEK_CIRC_TOWP, SEEK_END); // set current rp pointer to FPGA write pointer
 	p = wp;
 	while ((p >= 0) & (nf < 500)) {
 		if (p == rp) nfl = nf;
@@ -744,11 +668,11 @@ int framePointersXML(struct file_set *fset)
 	buf_free = GLOBALPARS(fset->port_num, G_FREECIRCBUF);
 	frame_size = GLOBALPARS(fset->port_num, G_FRAME_SIZE);
 
-	lseek(fd_circ, save_p, SEEK_SET);                       //! restore file pointer after temporarily moving it
-	buf_free = lseek(fd_circ, LSEEK_CIRC_FREE, SEEK_END);   //! will change file pointer
-	lseek(fd_circ, save_p, SEEK_SET);                       //! restore file pointer after temporarily moving it
-	buf_used = lseek(fd_circ, LSEEK_CIRC_USED, SEEK_END);   //! will change file pointer
-	lseek(fd_circ, save_p, SEEK_SET);                       //! restore file pointer after temporarily moving it
+	lseek(fd_circ, save_p, SEEK_SET);                       // restore file pointer after temporarily moving it
+	buf_free = lseek(fd_circ, LSEEK_CIRC_FREE, SEEK_END);   // will change file pointer
+	lseek(fd_circ, save_p, SEEK_SET);                       // restore file pointer after temporarily moving it
+	buf_used = lseek(fd_circ, LSEEK_CIRC_USED, SEEK_END);   // will change file pointer
+	lseek(fd_circ, save_p, SEEK_SET);                       // restore file pointer after temporarily moving it
 
 	sprintf(s, "<?xml version=\"1.0\"?>\n" \
 			"<frame_pointers>\n" \
@@ -789,6 +713,10 @@ int framePointersXML(struct file_set *fset)
 	return 0;
 }
 
+/**
+ * @brief Send 1x1 pixel GIF file as indication of an error
+ * @return this function always returns 0
+ */
 int out1x1gif(void)
 {
 	char s[] = "HTTP/1.0 200 OK\r\n" \
@@ -800,10 +728,15 @@ int out1x1gif(void)
 			"\xff\xff\xff\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x4c" \
 			"\x01\x00\x3b";
 
-	fwrite(s, 1, sizeof(s), stdout);        //! we have zeros in the string
-	return 0;                               //! always good
+	fwrite(s, 1, sizeof(s), stdout);        // we have zeros in the string
+	return 0;                               // always good
 }
 
+/**
+ * @brief Print error message to @e stdout in XML format
+ * @param[in]   msg   error message string
+ * @return      None
+ */
 void errorMsgXML(char * msg)
 {
 	char s[1024];
@@ -822,11 +755,18 @@ void errorMsgXML(char * msg)
 	printf(s);
 }
 
-
-
-//! read pointer in fd_circ should be at the start of the frame to be sent
-//! mmap will be opened in this function
-
+/**
+ * @brief Read, prepare and send single image file
+ *
+ * This function reads image file data from circular buffer, JPEG header data from
+ * JPEG header buffer and optionally Exif data from Exif buffer and then sends
+ * prepared JPEG file to @e stdout
+ * @param[in]   fset            file set for which the data should be obtained
+ * @param[in]   bufferImageData write image data to buffer before sending
+ * @param[in]   use_Exif        flag indicating that Exif should be used
+ * @param[in]   saveImage       open file save dialog in web browser
+ * @return      0 if file was successfully sent and negative error code otherwise
+ */
 int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int saveImage)
 {
 	int exifDataSize = 0;
@@ -860,13 +800,13 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		close(fd_head);
 		return -2;
 	}
-	/*! find total buffer length (it is in defines, actually in c313a.h */
+	/* find total buffer length (it is in defines, actually in c313a.h */
 	buff_size = lseek(fset->circbuf_fd, 0, SEEK_END);
-	/*! restore file poinetr after lseek-ing the end */
+	/* restore file poinetr after lseek-ing the end */
 	lseek(fset->circbuf_fd, jpeg_start, SEEK_SET);
 	D(fprintf(stderr, "position (longs) = 0x%x\n", (int)lseek(fset->circbuf_fd, 0, SEEK_CUR)));
 
-	/*! now let's try mmap itself */
+	/* now let's try mmap itself */
 	frameParamPointer = jpeg_start - sizeof(struct interframe_params_t) + 4;
 	if (frameParamPointer < 0)
 		frameParamPointer += buff_size;
@@ -886,7 +826,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 
 	if (use_Exif) {
 		D(fprintf(stderr,"frame_params.meta_index=0x%x\n",(int) frame_params.meta_index));
-		/// read Exif to buffer:
+		// read Exif to buffer:
 		fd_exif = open(fset->exif_dev_name, O_RDONLY);
 		if (fd_exif < 0) {                                 // check control OK
 			fprintf(stderr, "Error opening %s\n", fset->exif_dev_name);
@@ -900,9 +840,9 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		frame_params.meta_index=0;
 		fd_exif = -1;
 	}
-	///Maybe make buffer that will fit both Exif and JPEG?
-	//!Get metadata, update Exif and JFIF headers if ep and ed poinetrs are non-zero (NULL will generate files with JFIF-only headers)
-	/// Now we always malloc buffer, before - only for bimg, using fixed-size header buffer - was it faster?
+	// Maybe make buffer that will fit both Exif and JPEG?
+	// Get metadata, update Exif and JFIF headers if ep and ed pointers are non-zero (NULL will generate files with JFIF-only headers)
+	// Now we always malloc buffer, before - only for bimg, using fixed-size header buffer - was it faster?
 
 	jpeg_full_size = jpeg_len + head_size + 2 + exifDataSize;
 
@@ -914,7 +854,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	jpeg_copy = malloc(jpeg_this_size);
 	if (!jpeg_copy) {
 		syslog(LOG_ERR, "%s:%d malloc (%d) failed", __FILE__, __LINE__, jpeg_this_size);
-		/// If we really want it, but don't get it - let's try more
+		// If we really want it, but don't get it - let's try more
 		for (i = 0; i < 10; i++) {
 			usleep(((jpeg_this_size & 0x3ff) + 5) * 100);  // up to 0.1 sec
 			jpeg_copy = malloc(jpeg_this_size);
@@ -939,18 +879,18 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	switch (color_mode) {
 	//   case COLORMODE_MONO6:    //! monochrome, (4:2:0),
 	//   case COLORMODE_COLOR:    //! color, 4:2:0, 18x18(old)
-	case COLORMODE_JP46:    //! jp4, original (4:2:0)
-	case COLORMODE_JP46DC:  //! jp4, dc -improved (4:2:0)
+	case COLORMODE_JP46:    // jp4, original (4:2:0)
+	case COLORMODE_JP46DC:  // jp4, dc -improved (4:2:0)
 		mime_type = "jp46";
 		extension = "jp46";
 		break;
-		//   case COLORMODE_COLOR20:  //!  color, 4:2:0, 20x20, middle of the tile (not yet implemented)
-	case COLORMODE_JP4:             //! jp4, 4 blocks, (legacy)
-	case COLORMODE_JP4DC:           //! jp4, 4 blocks, dc -improved
-	case COLORMODE_JP4DIFF:         //! jp4, 4 blocks, differential red := (R-G1), blue:=(B-G1), green=G1, green2 (G2-G1). G1 is defined by Bayer shift, any pixel can be used
-	case COLORMODE_JP4HDR:          //! jp4, 4 blocks, differential HDR: red := (R-G1), blue:=(B-G1), green=G1, green2 (high gain)=G2) (G1 and G2 - diagonally opposite)
-	case COLORMODE_JP4DIFF2:        //! jp4, 4 blocks, differential, divide differences by 2: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (G2-G1)/2
-	case COLORMODE_JP4HDR2:         //! jp4, 4 blocks, differential HDR: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (high gain)=G2),
+		//   case COLORMODE_COLOR20://  color, 4:2:0, 20x20, middle of the tile (not yet implemented)
+	case COLORMODE_JP4:             // jp4, 4 blocks, (legacy)
+	case COLORMODE_JP4DC:           // jp4, 4 blocks, dc -improved
+	case COLORMODE_JP4DIFF:         // jp4, 4 blocks, differential red := (R-G1), blue:=(B-G1), green=G1, green2 (G2-G1). G1 is defined by Bayer shift, any pixel can be used
+	case COLORMODE_JP4HDR:          // jp4, 4 blocks, differential HDR: red := (R-G1), blue:=(B-G1), green=G1, green2 (high gain)=G2) (G1 and G2 - diagonally opposite)
+	case COLORMODE_JP4DIFF2:        // jp4, 4 blocks, differential, divide differences by 2: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (G2-G1)/2
+	case COLORMODE_JP4HDR2:         // jp4, 4 blocks, differential HDR: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (high gain)=G2),
 		mime_type = "jp4";
 		extension = "jp4";
 		break;
@@ -975,24 +915,23 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
    #define COLORMODE_JP4DIFF2  9 // jp4, 4 blocks, differential, divide differences by 2: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (G2-G1)/2
    #define COLORMODE_JP4HDR2  10 // jp4, 4 blocks, differential HDR: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (high gain)=G2),
    #define COLORMODE_MONO4    14 // monochrome, 4 blocks (but still with 2x2 macroblocks)
-
 	 */
 	printf("Content-Type: image/%s\r\n", mime_type);
-	if (saveImage) printf("Content-Disposition: attachment; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);     /// does not open, asks for filename to save
-	else printf("Content-Disposition: inline; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);                   /// opens in browser, asks to save on right-click
+	if (saveImage) printf("Content-Disposition: attachment; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);     // does not open, asks for filename to save
+	else printf("Content-Disposition: inline; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);                   // opens in browser, asks to save on right-click
 
-	if (bufferImageData) {                                                                                                                  /*! Buffer the whole file before sending over the network to make sure it will not be corrupted if the circular buffer will be overrun) */
+	if (bufferImageData) {                                                                                                                  /* Buffer the whole file before sending over the network to make sure it will not be corrupted if the circular buffer will be overrun) */
 #ifdef ELPHEL_DEBUG_THIS
 		unsigned long start_time, end_time;
 		start_time = lseek(fset->circbuf_fd, LSEEK_CIRC_UTIME, SEEK_END);
 #endif
 		l = head_size + exifDataSize;
-		/*! JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
+		/* JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
 		if ((jpeg_start + jpeg_len) > buff_size) { // two segments
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start);
 			l += buff_size - jpeg_start;
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start));
-		} else { /*! single segment */
+		} else { /* single segment */
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
 		}
 #ifdef ELPHEL_DEBUG_THIS
@@ -1003,18 +942,18 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		printf("Content-Length: %d\r\n", jpeg_full_size);
 		printf("\r\n");
 		sendBuffer(jpeg_copy, jpeg_full_size);
-	} else { /*! fast connection, no need to buffer image, so we'll try to run it faster */
+	} else { /* fast connection, no need to buffer image, so we'll try to run it faster */
 		printf("Content-Length: %d\r\n", jpeg_full_size);
 		printf("\r\n");
 		sendBuffer(jpeg_copy, head_size + exifDataSize);        //JPEG+Exif
-		/*! JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
+		/* JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
 		if ((jpeg_start + jpeg_len) > buff_size) {              // two segments
-			/*! copy from the beginning of the frame to the end of the buffer */
+			/* copy from the beginning of the frame to the end of the buffer */
 			sendBuffer((void*)&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start);
-			/*! copy from the beginning of the buffer to the end of the frame */
+			/* copy from the beginning of the buffer to the end of the frame */
 			sendBuffer((void*)&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start));
 		} else { // single segment
-			/*! copy from the beginning of the frame to the end of the frame (no buffer rollovers) */
+			/* copy from the beginning of the frame to the end of the frame (no buffer rollovers) */
 			sendBuffer((void*)&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
 		}
 		sendBuffer(trailer, 2);
@@ -1023,7 +962,13 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	return 0;
 }
 
-/*! repeat writes to stdout until all data is sent */
+/**
+ * @brief Send data from buffer to @e stdout. The writes are repeated until
+ * all data is sent.
+ * @param[in]   buffer   pointer to data buffer
+ * @param[in]   len      the length of data buffer
+ * @return      None
+ */
 void sendBuffer(void * buffer, int len)
 {
 	int bytesLeft = len;
@@ -1041,11 +986,17 @@ void sendBuffer(void * buffer, int len)
 	}
 }
 
+/**
+ * @brief Main processing function. Parent process forks into this function,
+ * listens to commands sent over socket and sends data back.
+ * @param[in]   fset   file set for which the data should be processed
+ * @return      None, this function should not return
+ */
 void listener_loop(struct file_set *fset)
 {
 	char errormsg[1024];
 	int fd_circ;
-	int this_p; //! current frame pointer (bytes)
+	int this_p;             // current frame pointer (bytes)
 	int rslt;
 	int buf_images = 0;
 	int suggest_save_images = 0;
@@ -1073,26 +1024,26 @@ void listener_loop(struct file_set *fset)
 		if (fd == -1) continue;
 		signal(SIGCHLD, SIG_IGN); // no zombies, please!
 
-		/*! do we need any fork at all if we now serve images to one client at a time? */
+		/* do we need any fork at all if we now serve images to one client at a time? */
 		if (fork() == 0) {
 			close(res);
-			/*! setup stdin and stdout */
+			/* setup stdin and stdout */
 			fflush(stdout);
 			fflush(stderr);
 			dup2(fd, 0);
 			dup2(fd, 1);
 			close(fd);
-			/*! We need just the first line of the GET to read parameters */
+			/* We need just the first line of the GET to read parameters */
 			if (fgets(buf, sizeof(buf) - 1, stdin)) len = strlen(buf);
 			cp = buf;
 			strsep(&cp, "/?"); // ignore everything before first "/" or "?"
 			if (cp) {
-				//! Now cp points to the first character after the first "/" or "?" in the url
-				//! we need to remove everything after (and including) the first space
+				// Now cp points to the first character after the first "/" or "?" in the url
+				// we need to remove everything after (and including) the first space
 				cp1 = strchr(cp, ' ');
 				if (cp1) cp1[0] = '\0';
 			}
-			if (!cp || (strlen(cp) == 0)) { //!no url commands - probably the server url was manually entered
+			if (!cp || (strlen(cp) == 0)) { // no url commands - probably the server url was manually entered
 				printf("HTTP/1.0 200 OK\r\n");
 				printf("Server: Elphel Imgsrv\r\n");
 				printf("Content-Length: %d\r\n", strlen(url_args));
@@ -1102,7 +1053,7 @@ void listener_loop(struct file_set *fset)
 				fflush(stdout);
 				_exit(0);
 			}
-			/// Process 'frame' and 'wframe' commands - theys do not need circbuf
+			// Process 'frame' and 'wframe' commands - theys do not need circbuf
 			if ((strncmp(cp, "frame", 5) == 0) || (strncmp(cp, "wframe", 6) == 0)) {
 				if (strncmp(cp, "wframe", 6) == 0) waitFrameSync();
 				printf("HTTP/1.0 200 OK\r\n");
@@ -1114,7 +1065,7 @@ void listener_loop(struct file_set *fset)
 				fflush(stdout);
 				_exit(0);
 			}
-			//!now process the commands one at a time, but first - open the circbuf file and setup the pointer
+			// now process the commands one at a time, but first - open the circbuf file and setup the pointer
 			fd_circ = open(fset->cirbuf_fn, O_RDWR);
 			if (fd_circ < 0) { // check control OK
 				fprintf(stderr, "Error opening %s\n", fset->cirbuf_fn);
@@ -1123,10 +1074,10 @@ void listener_loop(struct file_set *fset)
 				_exit(0);
 			}
 			fset->circbuf_fd = fd_circ;
-			/*! find total buffer length (it is in defines, actually in c313a.h */
+			/* find total buffer length (it is in defines, actually in c313a.h */
 			buff_size = lseek(fd_circ, 0, SEEK_END);
 			fprintf(stderr, "%s: read circbuf size: %d\n", __func__, buff_size);
-			/*! now let's try mmap itself */
+			/* now let's try mmap itself */
 			ccam_dma_buf = (unsigned long*)mmap(0, buff_size, PROT_READ, MAP_SHARED, fd_circ, 0);
 			if ((int)ccam_dma_buf == -1) {
 				fprintf(stderr, "Error in mmap\n");
@@ -1144,8 +1095,8 @@ void listener_loop(struct file_set *fset)
 					this_p = lseek(fd_circ, strtol(cp1, NULL, 10), SEEK_SET);
 				} else if ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "bimg") == 0) || (strcmp(cp1, "simg") == 0) || (strcmp(cp1, "sbimg") == 0)) {
 					fprintf(stderr, "%s: processing img command\n", __func__);
-					if (sent2socket > 0) break;                             //! image/xmldata was already sent to socket, ignore
-					if (lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) < 0) {   //! here passes OK, some not ready error is later, in sendimage (make it return different numbers)
+					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
+					if (lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) < 0) {   // here passes OK, some not ready error is later, in sendimage (make it return different numbers)
 						rslt = out1x1gif();
 						fprintf(stderr, "%s: no frame is available\n", __func__);
 					} else {
@@ -1156,7 +1107,7 @@ void listener_loop(struct file_set *fset)
 						buf_images = ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "simg") == 0)) ? 0 : 1;
 						suggest_save_images = ((strcmp(cp1, "simg") == 0) || (strcmp(cp1, "sbimg") == 0)) ? 1 : 0;
 						fprintf(stderr, "%s: sending image\n", __func__);
-						rslt = sendImage(fset, buf_images, exif_enable, suggest_save_images); //! verify driver that file pointer did not move
+						rslt = sendImage(fset, buf_images, exif_enable, suggest_save_images); // verify driver that file pointer did not move
 					}
 					sent2socket = 1;
 					if (rslt < 0) {
@@ -1166,15 +1117,14 @@ void listener_loop(struct file_set *fset)
 							errorMsgXML(errormsg);
 						}
 					}
-					fflush(stdout); //! let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+					fflush(stdout); // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
 
 				// multipart - always last
 				} else if ((strncmp(cp1, "mimg", 4) == 0) || (strncmp(cp1, "bmimg", 5) == 0) || (strncmp(cp1, "mbimg", 5) == 0)) {
-					if (sent2socket > 0) break;                             //! image/xmldata was already sent to socket, ignore
-					if (lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) < 0)     //! here passes OK, some not ready error is later, in sendimage (make it return different numbers)
+					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
+					if (lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) < 0)     // here passes OK, some not ready error is later, in sendimage (make it return different numbers)
 						rslt = out1x1gif();
 					else {
-						//TODO:
 						buf_images = (strncmp(cp1, "mimg", 4) == 0) ? 0 : 1;
 						cp2 = cp1 + (buf_images ? 5 : 4);
 						slow = strtol(cp2, NULL, 10);
@@ -1188,14 +1138,14 @@ void listener_loop(struct file_set *fset)
 						rslt = 0;
 						while (rslt >= 0) {
 							printf("\r\n--ElphelMultipartJPEGBoundary\r\n");
-							rslt = sendImage(fset, buf_images, exif_enable, 0); //! verify driver that file pointer did not move
+							rslt = sendImage(fset, buf_images, exif_enable, 0); // verify driver that file pointer did not move
 							fflush(stdout);
 							if (rslt >= 0) for (skip = 0; skip < slow; skip++) {
 								this_p = lseek(fd_circ, LSEEK_CIRC_NEXT, SEEK_END);
-								/// If these "next" is not ready yet - wait, else - use latest image
-								if ((lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0) &&        //! no sense to wait if the pointer is invalid
-										(lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) <  0) &&        //! or the frame is already ready
-										(lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0))          //! test valid once again, after not ready - it might change
+								// If these "next" is not ready yet - wait, else - use latest image
+								if ((lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0) &&        // no sense to wait if the pointer is invalid
+										(lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) <  0) &&    // or the frame is already ready
+										(lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0))      // test valid once again, after not ready - it might change
 									this_p = lseek(fd_circ, LSEEK_CIRC_WAIT, SEEK_END);
 								else this_p = lseek(fd_circ, LSEEK_CIRC_LAST, SEEK_END);
 							}
@@ -1203,15 +1153,15 @@ void listener_loop(struct file_set *fset)
 						_exit(0);
 					}
 				} else if (strcmp(cp1, "pointers") == 0) {
-					if (sent2socket > 0) break;                             //! image/xmldata was already sent to socket, ignore
-					framePointersXML(fset);                                 //! will restore file pointer after itself
+					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
+					framePointersXML(fset);                                 // will restore file pointer after itself
 					sent2socket = 3;
-					fflush(stdout);                                         //! let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
 				} else if (strcmp(cp1, "meta") == 0) {
-					if ((sent2socket > 0) && (sent2socket != 2)) break;     //! image/xmldata was already sent to socket, ignore
-					metaXML(fset, (sent2socket > 0) ? 1 : 0);            /// 0 - new (send headers), 1 - continue, 2 - finish
+					if ((sent2socket > 0) && (sent2socket != 2)) break;     // image/xmldata was already sent to socket, ignore
+					metaXML(fset, (sent2socket > 0) ? 1 : 0);               // 0 - new (send headers), 1 - continue, 2 - finish
 					sent2socket = 2;
-					fflush(stdout);                                         //! let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
 				} else if (strcmp(cp1, "noexif") == 0) {
 					exif_enable = 0;
 				} else if (strcmp(cp1, "exif") == 0) {
@@ -1233,35 +1183,28 @@ void listener_loop(struct file_set *fset)
 				} else if (strcmp(cp1, "save") == 0) {
 					this_p = lseek(fd_circ, LSEEK_CIRC_SETP, SEEK_END);
 				} else if (strcmp(cp1, "wait") == 0) {
-					if ((lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0) &&        //! no sense to wait if the pointer is invalid
-							(lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) <  0) &&        //! or the frame is already ready
-							(lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0))          //! test valid once again, after not ready - it might change
+					if ((lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0) &&        // no sense to wait if the pointer is invalid
+							(lseek(fd_circ, LSEEK_CIRC_READY, SEEK_END) <  0) &&    // or the frame is already ready
+							(lseek(fd_circ, LSEEK_CIRC_VALID, SEEK_END) >= 0))      // test valid once again, after not ready - it might change
 						this_p = lseek(fd_circ, LSEEK_CIRC_WAIT, SEEK_END);
 				} else if (strcmp(cp1, "trig") == 0) {
-					//     printf ("trig argument\n");
-
 					int fd_fpga = open("/dev/fpgaio", O_RDWR);
-					//     printf ("fd_fpga = 0x%x\n",fd_fpga);
-
 					if (fd_fpga >= 0) {
-						//int aaa;
-						lseek(fd_fpga, 0x7b, SEEK_SET); //!TODO: remove absolute register address from user application!  32-bit registers, not bytes
-						//printf ("lseek()-> 0x%x\n",aaa);
+						lseek(fd_fpga, 0x7b, SEEK_SET); ///@todo Remove absolute register address from user application! 32-bit registers, not bytes
 						long data = 1;
 						write(fd_fpga, &data, 4); // actually send the trigger pulse (will leave camera in single-shot mode)
-						//printf ("write()-> 0x%x\n",aaa);
 						close(fd_fpga);
 					}
 				} else if (strcmp(cp1, "favicon.ico") == 0) {
-					///ignore silently - for now, later make an icon?
+					// ignore silently - for now, later make an icon?
 				} else {
-					if (cp1[0] != '_') fprintf(stderr, "Unrecognized URL command: \"%s\" - ignoring\n", cp1);  //!allow "&_time=..." be silently ignored - needed for javascript image reload
+					if (cp1[0] != '_') fprintf(stderr, "Unrecognized URL command: \"%s\" - ignoring\n", cp1);  // allow "&_time=..." be silently ignored - needed for javascript image reload
 				}
-			} //!while ((cp1=strsep(&cp, "/?&")))
-			if (sent2socket <= 0) { //! Nothing was sent to the client so far and the command line is over. Let's return 1x1 pixel gif
+			} // while ((cp1=strsep(&cp, "/?&")))
+			if (sent2socket <= 0) { // Nothing was sent to the client so far and the command line is over. Let's return 1x1 pixel gif
 				out1x1gif();
 			} else if (sent2socket == 2) {
-				metaXML(fset, 2); /// 0 - new (send headers), 1 - continue, 2 - finish
+				metaXML(fset, 2);   // 0 - new (send headers), 1 - continue, 2 - finish
 			}
 
 			fflush(stdout); // probably it is not needed anymore, just in case
@@ -1271,6 +1214,16 @@ void listener_loop(struct file_set *fset)
 	} // while (1)
 }
 
+/**
+ * @brief Parse command line options
+ * @param[in]       argc   the number of command line arguments; passed from main()
+ * @param[in]       argv   array of pointers to command line arguments; passed from main()
+ * @param[in,out]   fset   array of #file_set structures; this function will set port
+ *  numbers in the structures
+ * @param[in]       fset_sz the number of elements in @e fset
+ * @return          0 if command line options were successfully processed and
+ * -1 in case of an error
+ */
 int parse_cmd_line(int argc, const char *argv[], struct file_set *fset, int fset_sz)
 {
 	int port;
@@ -1313,6 +1266,12 @@ int parse_cmd_line(int argc, const char *argv[], struct file_set *fset, int fset
 	return 0;
 }
 
+/**
+ * @brief Initialize a file set with predefined values
+ * @param[in,out]   fset   file set which should be initialized
+ * @param[in]       fset_sz the number of elements in @e fset
+ * @return          None
+ */
 void init_file_set(struct file_set *fset, int fset_sz)
 {
 	for (int i = 0; i < fset_sz; i++) {
@@ -1328,7 +1287,10 @@ void init_file_set(struct file_set *fset, int fset_sz)
 	}
 }
 
-/*! set port, start listening/answering HTTP requests */
+/**
+ * @brief Set port numbers, fork a separate process for each sensor port and
+ * start listening/answering HTTP requests
+ */
 int main(int argc, char *argv[])
 {
 	int res = 0;
@@ -1348,7 +1310,7 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < SENSOR_PORTS; i++) {
 		if (fork() == 0) {
 			listener_loop(&files[i]);
-			_exit(0);               // should not get here?
+			_exit(0);
 		}
 	}
 
