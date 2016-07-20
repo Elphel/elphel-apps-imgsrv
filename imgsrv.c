@@ -24,18 +24,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-//#include <ctype.h>
-//#include <getopt.h>
 #include <time.h>
 #include <string.h>
 #include <syslog.h>
-
 #include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-
-//#include <elphel/c313a.h>
-//#include <elphel/exifa.h>
 #include <c313a.h>
 #include <exifa.h>
 #include <asm/byteorder.h>
