@@ -8,11 +8,23 @@ OBJS = imgsrv.o
 #CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/uapi/elphel
 CFLAGS   += -Wall -I$(STAGING_DIR_HOST)/usr/include-uapi/elphel
 
+SYSCONFDIR = /etc/
+BINDIR     = /usr/bin/
+WWW_PAGES  = /www/pages
 
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+install: 
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 0755 -t $(DESTDIR)$(BINDIR) $(PROGS)
+	install -d $(DESTDIR)$(SYSCONFDIR)
+	install -m 0644 -t $(DESTDIR)$(SYSCONFDIR) $(CONFIGS)
+	install -d $(DESTDIR)$(WWW_PAGES)
+	install -m 0755 -t $(DESTDIR)$(WWW_PAGES) $(PHPCLI) 
+
 clean:
 	rm -rf $(PROGS) *.o core
 
