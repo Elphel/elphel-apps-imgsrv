@@ -33,6 +33,7 @@
 #include <c313a.h>
 #include <exifa.h>
 #include <asm/byteorder.h>
+#include <x393_devices.h>
 
 #undef ELPHEL_DEBUG
 #if ELPHEL_DEBUG
@@ -93,18 +94,33 @@ static struct file_set  files[SENSOR_PORTS];
 
 unsigned long * ccam_dma_buf;
 char trailer[TRAILER_SIZE] = { 0xff, 0xd9 };
+#if 0
 const char *circbuf_fnames[] = {
-		"/dev/circbuf0",
-		"/dev/circbuf1",
-		"/dev/circbuf2",
-		"/dev/circbuf3"
+        "/dev/circbuf0",
+        "/dev/circbuf1",
+        "/dev/circbuf2",
+        "/dev/circbuf3"
 };
 const char *jhead_fnames[] = {
-		"/dev/jpeghead0",
-		"/dev/jpeghead1",
-		"/dev/jpeghead2",
-		"/dev/jpeghead3",
+        "/dev/jpeghead0",
+        "/dev/jpeghead1",
+        "/dev/jpeghead2",
+        "/dev/jpeghead3",
 };
+#else
+const char *circbuf_fnames[] = {
+        DEV393_PATH(DEV393_CIRCBUF0),
+        DEV393_PATH(DEV393_CIRCBUF1),
+        DEV393_PATH(DEV393_CIRCBUF2),
+        DEV393_PATH(DEV393_CIRCBUF3)
+};
+const char *jhead_fnames[] = {
+        DEV393_PATH(DEV393_JPEGHEAD0),
+        DEV393_PATH(DEV393_JPEGHEAD0),
+        DEV393_PATH(DEV393_JPEGHEAD0),
+        DEV393_PATH(DEV393_JPEGHEAD0)
+};
+#endif
 static const char *exif_dev_names[SENSOR_PORTS] = { EXIF_DEV_NAMES };
 static const char *exifmeta_dev_names[SENSOR_PORTS] = { EXIFMETA_DEV_NAMES };
 

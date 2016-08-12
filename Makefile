@@ -5,7 +5,7 @@ CONFFILES  = Exif_template.xml
 SRCS = imgsrv.c
 OBJS = imgsrv.o
 
-CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/elphel
+CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/uapi/elphel
 
 all: $(PROGS)
 
