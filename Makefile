@@ -1,6 +1,6 @@
 PROGS      = imgsrv
 PHPCLI = exif.php imu_setup.php start_gps_compass.php
-CONFFILES  = Exif_template.xml 
+CONFIGS  = Exif_template.xml 
 
 SRCS = imgsrv.c
 OBJS = imgsrv.o

@@ -121,6 +121,7 @@ const char *jhead_fnames[] = {
         DEV393_PATH(DEV393_JPEGHEAD0)
 };
 #endif
+
 static const char *exif_dev_names[SENSOR_PORTS] = { EXIF_DEV_NAMES };
 static const char *exifmeta_dev_names[SENSOR_PORTS] = { EXIFMETA_DEV_NAMES };
 
