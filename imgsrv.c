@@ -30,10 +30,10 @@
 #include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
-#include <c313a.h>
-#include <exifa.h>
 #include <asm/byteorder.h>
-#include <x393_devices.h>
+#include <elphel/c313a.h>
+#include <elphel/exifa.h>
+#include <elphel/x393_devices.h>
 
 #undef ELPHEL_DEBUG
 #if ELPHEL_DEBUG
@@ -122,8 +122,10 @@ const char *jhead_fnames[] = {
 };
 #endif
 
-static const char *exif_dev_names[SENSOR_PORTS] = { EXIF_DEV_NAMES };
-static const char *exifmeta_dev_names[SENSOR_PORTS] = { EXIFMETA_DEV_NAMES };
+static const char *exif_dev_names[SENSOR_PORTS] = { DEV393_PATH(DEV393_EXIF0), DEV393_PATH(DEV393_EXIF1),
+                                                    DEV393_PATH(DEV393_EXIF2), DEV393_PATH(DEV393_EXIF3)};
+static const char *exifmeta_dev_names[SENSOR_PORTS] = { DEV393_PATH(DEV393_EXIF_META0),  DEV393_PATH(DEV393_EXIF_META1),
+                                                        DEV393_PATH(DEV393_EXIF_META2), DEV393_PATH(DEV393_EXIF_META3)};
 
 const char app_args[] = "Usage:\n%s -p <port_number_1> [<port_number_2> <port_number_3> <port_number_4>]\n" \
 		"Start image server, bind it to ports <port_number_1> <port_number_2> <port_number_3> <port_number_4>\n" \
@@ -192,9 +194,9 @@ int printExifXML(int exif_page, struct file_set *fset)
 
 	// Create Exif directory
 	// Read the size  of the Exif data
-	fd_exifdir = open(EXIFDIR_DEV_NAME, O_RDONLY);
+	fd_exifdir = open(DEV393_PATH(DEV393_EXIF_METADIR), O_RDONLY);
 	if (fd_exifdir < 0) {
-		printf("<error>\"Opening %s\"</error>\n", EXIFDIR_DEV_NAME);
+		printf("<error>\"Opening %s\"</error>\n", DEV393_PATH(DEV393_EXIF_METADIR));
 		return -2; // Error opening Exif directory
 	}
 	for (indx = 0; indx < ExifKmlNumber; indx++) exif_dir[indx].ltag = 0;

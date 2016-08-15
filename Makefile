@@ -5,11 +5,17 @@ CONFIGS  = Exif_template.xml
 SRCS = imgsrv.c
 OBJS = imgsrv.o
 
-#CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/uapi/elphel
-CFLAGS   += -Wall -I$(STAGING_DIR_HOST)/usr/include-uapi/elphel
+INSTALL    = install
+INSTMODE   = 0755
+INSTDOCS   = 0644
 
-SYSCONFDIR = /etc/
-BINDIR     = /usr/bin/
+OWN = -o root -g root
+
+#CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/uapi/elphel
+CFLAGS   += -Wall -I$(STAGING_DIR_HOST)/usr/include-uapi
+
+SYSCONFDIR = /etc
+BINDIR     = /usr/bin
 WWW_PAGES  = /www/pages
 
 all: $(PROGS)
@@ -17,13 +23,13 @@ all: $(PROGS)
 $(PROGS): $(OBJS)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
-install: 
-	install -d $(DESTDIR)$(BINDIR)
-	install -m 0755 -t $(DESTDIR)$(BINDIR) $(PROGS)
-	install -d $(DESTDIR)$(SYSCONFDIR)
-	install -m 0644 -t $(DESTDIR)$(SYSCONFDIR) $(CONFIGS)
-	install -d $(DESTDIR)$(WWW_PAGES)
-	install -m 0755 -t $(DESTDIR)$(WWW_PAGES) $(PHPCLI) 
+install: $(PROGS) $(PHPCLI) $(CONFIGS)
+	$(INSTALL) $(OWN) -d $(DESTDIR)$(BINDIR)
+	$(INSTALL) $(OWN) -d $(DESTDIR)$(SYSCONFDIR)
+	$(INSTALL) $(OWN) -d $(DESTDIR)$(WWW_PAGES)
+	$(INSTALL) $(OWN) -m $(INSTMODE) $(PROGS)   $(DESTDIR)$(BINDIR)
+	$(INSTALL) $(OWN) -m $(INSTDOCS) $(CONFIGS) $(DESTDIR)$(SYSCONFDIR) 
+	$(INSTALL) $(OWN) -m $(INSTMODE) $(PHPCLI)  $(DESTDIR)$(WWW_PAGES) 
 
 clean:
 	rm -rf $(PROGS) *.o core
