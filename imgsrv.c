@@ -275,6 +275,8 @@ int printExifXML(int exif_page, struct file_set *fset)
 	}
 	//	fset->exif_dev_fd = fd_exif;
 	exif_page_start = lseek(fset->exif_dev_fd, exif_page, SEEK_END); // select specified Exif page
+    printf("<debugExifPage>\"%d (0x%x)\"</debugExifPage>\n", exif_page,exif_page);
+    printf("<debugExifPageStart>\"0x%08x\"</debugExifPageStart>\n", exif_page_start);
 	if (exif_page_start < 0) {
 		printf("<error>\"Exif page (%d) is out of range\"</error>\n", exif_page);
 	    fprintf(stderr, "%s:%d:%s: Exif page (%d) is out of range\n", __FILE__, __LINE__, __FUNCTION__, exif_page);
@@ -531,6 +533,16 @@ int  metaXML(struct file_set *fset, int mode)
 	int frameParamPointer = 0;
 	struct interframe_params_t frame_params;
 	int jpeg_len, jpeg_start, buff_size, timestamp_start;
+	int frame_number,compressed_frame_number;
+	// Adding current frame number (as in pointers)
+    if (fset->framepars_dev_fd <0)
+        fset->framepars_dev_fd = open(fset->framepars_dev_name, O_RDWR);
+    if (fset->framepars_dev_fd < 0) { // check control OK
+        printf("Error opening %s\n", fset->framepars_dev_name);
+        fprintf(stderr, "%s:%d:%s: Error opening %s\n", __FILE__, __LINE__, __FUNCTION__, fset->framepars_dev_name);
+        fset->framepars_dev_fd = -1;
+        return -1;
+    }
     if (fset->circbuf_fd <0) {
         fset->circbuf_fd = open(fset->cirbuf_fn, O_RDWR);
     }
@@ -538,6 +550,8 @@ int  metaXML(struct file_set *fset, int mode)
         printf("Error opening %s\n", fset->cirbuf_fn);
         fprintf(stderr, "%s:%d:%s: Error opening %s\n", __FILE__, __LINE__, __FUNCTION__, fset->cirbuf_fn);
     }
+    frame_number =            lseek(fset->framepars_dev_fd, 0, SEEK_CUR );
+    compressed_frame_number = lseek(fset->circbuf_fd, LSEEK_CIRC_GETFRAME, SEEK_END );
 
 	if (mode == 2) { // just close the xml file
 		printf("</meta>\n");
@@ -584,7 +598,13 @@ int  metaXML(struct file_set *fset, int mode)
 			"<height> 0x%x </height>\n" \
 			"<meta_index> 0x%x </meta_index>\n" \
 			"<timestamp>  %ld.%06ld</timestamp>\n" \
-			"<signffff> 0x%x </signffff>\n"
+			"<signffff> 0x%x </signffff>\n" \
+            "<currentSensorFrame>%d</currentSensorFrame>\n" \
+            "<latestCompressedFrame>%d</latestCompressedFrame>\n"\
+            "<timestampHex>  %08x %08x</timestampHex>\n" \
+            "<currentSensorFrameHex>0x%08x</currentSensorFrameHex>\n" \
+            "<latestCompressedFrameHex>0x%08x</latestCompressedFrameHex>\n"
+
 			, (int) jpeg_start
 			, (int) frame_params.hash32_r
 			, (int) frame_params.hash32_g
@@ -599,6 +619,12 @@ int  metaXML(struct file_set *fset, int mode)
 			,       frame_params.timestamp_sec
 			,       frame_params.timestamp_usec
 			, (int) frame_params.signffff
+            , (int) frame_number
+            , (int) compressed_frame_number
+            ,       frame_params.timestamp_sec
+            ,       frame_params.timestamp_usec
+            , (int) frame_number
+            , (int) compressed_frame_number
 	);
 	// 28-31 unsigned long  timestamp_sec ; //! number of seconds since 1970 till the start of the frame exposure
 	// 28-31 unsigned long  frame_length ;  //! JPEG frame length in circular buffer, bytes
@@ -784,7 +810,10 @@ int framePointersXML(struct file_set *fset)
 			"  <free>%d</free>\n" \
 			"  <used>%d</used>\n" \
 			"  <frame>%d</frame>\n"	\
+            "  <frameHex>0x%x</frameHex>\n" \
             "  <compressedFrame>%d</compressedFrame>\n" \
+            "  <compressedFrameHex>0x%x</compressedFrameHex>\n" \
+            "  <lag>%d</lag>\n" \
 			"  <frame_size>%d</frame_size>\n" \
 			"  <sensor_state>\"%s\"</sensor_state>\n" \
 			"  <compressor_state>\"%s\"</compressor_state>\n" \
@@ -797,7 +826,10 @@ int framePointersXML(struct file_set *fset)
 			buf_free,
 			buf_used,
 			frame_number,
+            frame_number,
 			compressed_frame_number,
+            compressed_frame_number,
+            frame_number - compressed_frame_number,
 			frame_size,
 			cp_sensor_state,
 			cp_compressor_state);
@@ -1222,7 +1254,7 @@ void listener_loop(struct file_set *fset)
 				if (strchr("0123456789", cp1[0])) {
 					this_p = lseek(fset->circbuf_fd, strtol(cp1, NULL, 10), SEEK_SET);
 				} else if ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "bimg") == 0) || (strcmp(cp1, "simg") == 0) || (strcmp(cp1, "sbimg") == 0)) {
-					fprintf(stderr, "%s: processing img command\n", __func__);
+//					fprintf(stderr, "%s: processing img command\n", __func__);
 					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
 					if (lseek(fset->circbuf_fd, LSEEK_CIRC_READY, SEEK_END) < 0) {   // here passes OK, some not ready error is later, in sendimage (make it return different numbers)
 						rslt = out1x1gif();
@@ -1234,7 +1266,7 @@ void listener_loop(struct file_set *fset)
 						printf("Pragma: no-cache\r\n");
 						buf_images = ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "simg") == 0)) ? 0 : 1;
 						suggest_save_images = ((strcmp(cp1, "simg") == 0) || (strcmp(cp1, "sbimg") == 0)) ? 1 : 0;
-						fprintf(stderr, "%s: sending image\n", __func__);
+//						fprintf(stderr, "%s: sending image\n", __func__);
 						rslt = sendImage(fset, buf_images, exif_enable, suggest_save_images); // verify driver that file pointer did not move
 					}
 					sent2socket = 1;
