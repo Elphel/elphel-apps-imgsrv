@@ -1,4 +1,4 @@
-#!/usr/local/sbin/php -q
+#!/usr/bin/env php
 <?php
 /*
 *! FILE NAME  : imu_setup.php

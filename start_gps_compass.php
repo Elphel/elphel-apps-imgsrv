@@ -1,4 +1,4 @@
-#!/usr/local/sbin/php -q
+#!/usr/bin/env php
 <?php
 /*
 *! FILE NAME  : start_gps_compass.php
