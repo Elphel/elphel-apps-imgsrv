@@ -42,6 +42,8 @@
 #define ELPHEL_DEBUG_THIS 0
 #endif
 
+//#define D1(x) fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __FUNCTION__); x
+#define D1(x)
 
 #if ELPHEL_DEBUG_THIS
 #define D(x) fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __FUNCTION__); x
@@ -99,20 +101,6 @@ static struct file_set  files[SENSOR_PORTS];
 
 unsigned long * ccam_dma_buf;
 char trailer[TRAILER_SIZE] = { 0xff, 0xd9 };
-#if 0
-const char *circbuf_fnames[] = {
-        "/dev/circbuf0",
-        "/dev/circbuf1",
-        "/dev/circbuf2",
-        "/dev/circbuf3"
-};
-const char *jhead_fnames[] = {
-        "/dev/jpeghead0",
-        "/dev/jpeghead1",
-        "/dev/jpeghead2",
-        "/dev/jpeghead3",
-};
-#else
 const char *circbuf_fnames[] = {
         DEV393_PATH(DEV393_CIRCBUF0),
         DEV393_PATH(DEV393_CIRCBUF1),
@@ -125,7 +113,6 @@ const char *jhead_fnames[] = {
         DEV393_PATH(DEV393_JPEGHEAD0),
         DEV393_PATH(DEV393_JPEGHEAD0)
 };
-#endif
 
 static const char *exif_dev_names[SENSOR_PORTS] = {
         DEV393_PATH(DEV393_EXIF0),
@@ -910,8 +897,6 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	int buff_size;
 	int jpeg_len;   // bytes
 	int jpeg_start; // bytes
-//	int fd_head;
-//	int fd_exif;
 	int head_size;
 	int jpeg_full_size, jpeg_this_size;
 	char * jpeg_copy;
@@ -1086,8 +1071,10 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start);
 			l += buff_size - jpeg_start;
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start));
+		    D1(fprintf(stderr, "Two parts (buffered), jpeg_start (long) = 0x%x\n", jpeg_start));
 		} else { /* single segment */
 			memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
+            D1(fprintf(stderr, "One part (buffered), jpeg_start (long) = 0x%x, buff_size = 0x%x\n", jpeg_start, buff_size));
 		}
 #if ELPHEL_DEBUG_THIS
 		end_time = lseek(fset->circbuf_fd, LSEEK_CIRC_UTIME, SEEK_END);
@@ -1107,9 +1094,11 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 			sendBuffer((void*)&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start);
 			/* copy from the beginning of the buffer to the end of the frame */
 			sendBuffer((void*)&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start));
+            D1(fprintf(stderr, "Two parts (non-buffered), jpeg_start (long) = 0x%x\n", jpeg_start));
 		} else { // single segment
 			/* copy from the beginning of the frame to the end of the frame (no buffer rollovers) */
 			sendBuffer((void*)&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
+            D1(fprintf(stderr, "One part (non-buffered), jpeg_start (long) = 0x%x, buff_size = 0x%x\n", jpeg_start, buff_size));
 		}
 		sendBuffer(trailer, 2);
 	}
@@ -1164,6 +1153,7 @@ void listener_loop(struct file_set *fset)
 	int res;
 	int one = 1;
 	int buff_size;
+    int frame_number,compressed_frame_number;
 
 	memset((char*)&sock, 0, sizeof(sock));
 	sock.sin_port = htons(fset->port_num);
@@ -1258,7 +1248,13 @@ void listener_loop(struct file_set *fset)
 					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
 					if (lseek(fset->circbuf_fd, LSEEK_CIRC_READY, SEEK_END) < 0) {   // here passes OK, some not ready error is later, in sendimage (make it return different numbers)
 						rslt = out1x1gif();
-						fprintf(stderr, "%s: no frame is available\n", __func__);
+					    compressed_frame_number = lseek(fset->circbuf_fd, LSEEK_CIRC_GETFRAME, SEEK_END );
+                        if (fset->framepars_dev_fd <0)
+                            fset->framepars_dev_fd = open(fset->framepars_dev_name, O_RDWR);
+                        frame_number =            lseek(fset->framepars_dev_fd, 0, SEEK_CUR );
+                        fprintf(stderr, "%s: no frame is available. Sensor frame = %d(0x%x), compressor frame = %d(0x%x)\n",
+                                __func__, frame_number, frame_number, compressed_frame_number, compressed_frame_number);
+
 					} else {
 						printf("HTTP/1.0 200 OK\r\n");
 						printf("Server: Elphel Imgsrv\r\n");
