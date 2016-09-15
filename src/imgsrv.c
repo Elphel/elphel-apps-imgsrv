@@ -35,15 +35,15 @@
 #include <elphel/exifa.h>
 #include <elphel/x393_devices.h>
 
-#undef ELPHEL_DEBUG
+#define ELPHEL_DEBUG 1
 #if ELPHEL_DEBUG
 #define ELPHEL_DEBUG_THIS 1
 #else
 #define ELPHEL_DEBUG_THIS 0
 #endif
 
-//#define D1(x) fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __FUNCTION__); x
-#define D1(x)
+#define D1(x) fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __FUNCTION__); x
+//#define D1(x)
 
 #if ELPHEL_DEBUG_THIS
 #define D(x) fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __FUNCTION__); x
@@ -109,9 +109,9 @@ const char *circbuf_fnames[] = {
 };
 const char *jhead_fnames[] = {
         DEV393_PATH(DEV393_JPEGHEAD0),
-        DEV393_PATH(DEV393_JPEGHEAD0),
-        DEV393_PATH(DEV393_JPEGHEAD0),
-        DEV393_PATH(DEV393_JPEGHEAD0)
+        DEV393_PATH(DEV393_JPEGHEAD1),
+        DEV393_PATH(DEV393_JPEGHEAD2),
+        DEV393_PATH(DEV393_JPEGHEAD3)
 };
 
 static const char *exif_dev_names[SENSOR_PORTS] = {
