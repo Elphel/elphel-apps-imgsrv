@@ -1,39 +1,27 @@
-PROGS      = imgsrv
-PHPCLI = exif.php imu_setup.php start_gps_compass.php
-CONFIGS  = Exif_template.xml 
+# Runs 'make', 'make install', and 'make clean' in specified subdirectories
+SUBDIRS := src
+INSTALLDIRS = $(SUBDIRS:%=install-%)
+CLEANDIRS =   $(SUBDIRS:%=clean-%)
 
-SRCS = imgsrv.c
-OBJS = imgsrv.o
+#TARGETDIR=$(DESTDIR)/www/pages
 
-INSTALL    = install
-INSTMODE   = 0755
-INSTDOCS   = 0644
+all: $(SUBDIRS)
+	@echo "make all top"
 
-OWN = -o root -g root
+$(SUBDIRS):
+	$(MAKE) -C $@
 
-#CFLAGS   += -Wall -I$(ELPHEL_KERNEL_DIR)/include/uapi/elphel
-CFLAGS   += -Wall -I$(STAGING_DIR_HOST)/usr/include-uapi
+install: $(INSTALLDIRS)
+	@echo "make install top"
 
-SYSCONFDIR = /etc
-BINDIR     = /usr/bin
-WWW_PAGES  = /www/pages
+$(INSTALLDIRS): 
+	$(MAKE) -C $(@:install-%=%) install
 
-all: $(PROGS)
+clean: $(CLEANDIRS)
+	@echo "make clean top"
 
-$(PROGS): $(OBJS)
-	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+$(CLEANDIRS): 
+	$(MAKE) -C $(@:clean-%=%) clean
 
-install: $(PROGS) $(PHPCLI) $(CONFIGS)
-	$(INSTALL) $(OWN) -d $(DESTDIR)$(BINDIR)
-	$(INSTALL) $(OWN) -d $(DESTDIR)$(SYSCONFDIR)
-	$(INSTALL) $(OWN) -d $(DESTDIR)$(WWW_PAGES)
-	$(INSTALL) $(OWN) -m $(INSTMODE) $(PROGS)   $(DESTDIR)$(BINDIR)
-	$(INSTALL) $(OWN) -m $(INSTDOCS) $(CONFIGS) $(DESTDIR)$(SYSCONFDIR) 
-	$(INSTALL) $(OWN) -m $(INSTMODE) $(PHPCLI)  $(DESTDIR)$(WWW_PAGES) 
+.PHONY: all install clean $(SUBDIRS) $(INSTALLDIRS) $(CLEANDIRS)
 
-clean:
-	rm -rf $(PROGS) *.o core
-
-#TODO: implement automatic dependencies!
-imgsrv.c:$(STAGING_DIR_HOST)/usr/include-uapi/elphel/x393_devices.h
-	
