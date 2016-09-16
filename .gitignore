@@ -9,5 +9,5 @@ attic/*
 generated*
 sysroots
 bitbake-logs
-/imgsrv.o
-/imgsrv
+src/imgsrv.o
+src/imgsrv
