@@ -11,3 +11,4 @@ sysroots
 bitbake-logs
 src/imgsrv.o
 src/imgsrv
+image

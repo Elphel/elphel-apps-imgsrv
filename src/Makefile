@@ -1,5 +1,5 @@
 PROGS      = imgsrv
-PHPCLI = exif.php imu_setup.php start_gps_compass.php
+PHPCLI = exif.php
 CONFIGS  = Exif_template.xml 
 
 SRCS = imgsrv.c
