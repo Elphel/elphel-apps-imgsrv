@@ -394,6 +394,11 @@ int printExifXML(int exif_page, struct file_set *fset)
 			sprintf(&val[10], " %02d:%02d:%05.2f", hours, minutes, seconds);
 		}
 		printf("<GPSDateTime>\"%s\"</GPSDateTime>\n", val);
+/*
+        printf("<DBGGPSDateTime>\"0x%x 0x%x 0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\"</DBGGPSDateTime>\n",
+                Exif_GPSInfo_GPSDateStamp, Exif_GPSInfo_GPSDateStamp_Index, exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].dst,
+                val[0],val[1],val[2],val[3],val[4],val[5],val[6],val[7],val[8],val[9],val[10],val[11],val[12]);
+*/
 	}
 
 	// knowing format provided from GPS - degrees and minutes only, no seconds:
