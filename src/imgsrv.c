@@ -1349,13 +1349,8 @@ void listener_loop(struct file_set *fset)
 							(lseek(fset->circbuf_fd, LSEEK_CIRC_VALID, SEEK_END) >= 0))      // test valid once again, after not ready - it might change
 						this_p = lseek(fset->circbuf_fd, LSEEK_CIRC_WAIT, SEEK_END);
 				} else if (strcmp(cp1, "trig") == 0) {
-					int fd_fpga = open("/dev/fpgaio", O_RDWR);
-					if (fd_fpga >= 0) {
-						lseek(fd_fpga, 0x7b, SEEK_SET); ///@todo Remove absolute register address from user application! 32-bit registers, not bytes
-						long data = 1;
-						write(fd_fpga, &data, 4); // actually send the trigger pulse (will leave camera in single-shot mode)
-						close(fd_fpga);
-					}
+				    lseek(fset->framepars_dev_fd, LSEEK_DMA_INIT, SEEK_END ); // LSEEK_DMA_INIT is currently used as trigger restart in NC393
+				    fprintf(stderr, "Retriggering camera\n", cp1);
 				} else if (strcmp(cp1, "favicon.ico") == 0) {
 					// ignore silently - for now, later make an icon?
 				} else {
