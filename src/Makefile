@@ -32,7 +32,7 @@ install: $(PROGS) $(PHPCLI) $(CONFIGS)
 	$(INSTALL) $(OWN) -m $(INSTMODE) $(PHPCLI)  $(DESTDIR)$(WWW_PAGES) 
 
 clean:
-	rm -rf $(PROGS) *.o core
+	rm -rf $(PROGS) *.o core .depend
 
 depend: .depend
 
