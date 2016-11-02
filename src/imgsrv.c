@@ -1349,8 +1349,10 @@ void listener_loop(struct file_set *fset)
 							(lseek(fset->circbuf_fd, LSEEK_CIRC_VALID, SEEK_END) >= 0))      // test valid once again, after not ready - it might change
 						this_p = lseek(fset->circbuf_fd, LSEEK_CIRC_WAIT, SEEK_END);
 				} else if (strcmp(cp1, "trig") == 0) {
+                    if (fset->framepars_dev_fd < 0)
+                        fset->framepars_dev_fd = open(fset->framepars_dev_name, O_RDWR);
 				    lseek(fset->framepars_dev_fd, LSEEK_DMA_INIT, SEEK_END ); // LSEEK_DMA_INIT is currently used as trigger restart in NC393
-				    fprintf(stderr, "Retriggering camera\n", cp1);
+				    fprintf(stderr, "Retriggering camera : lseek 0x%x, SEEK_END\n", LSEEK_DMA_INIT);
 				} else if (strcmp(cp1, "favicon.ico") == 0) {
 					// ignore silently - for now, later make an icon?
 				} else {

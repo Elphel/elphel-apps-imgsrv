@@ -34,6 +34,11 @@ install: $(PROGS) $(PHPCLI) $(CONFIGS)
 clean:
 	rm -rf $(PROGS) *.o core
 
-#TODO: implement automatic dependencies!
-imgsrv.c:$(STAGING_DIR_HOST)/usr/include-uapi/elphel/x393_devices.h
+depend: .depend
+
+.depend: $(SRCS)
+	rm -f ./.depend
+	$(CC) $(CFLAGS) -MM $^ > ./.depend;
+
+include .depend
 	
