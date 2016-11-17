@@ -96,7 +96,10 @@ struct file_set {
 	int            exifmeta_dev_fd;
     const char     *framepars_dev_name;
     int            framepars_dev_fd;
+    int            sensor_port;
+    int            timestamp_name;
 };
+
 static struct file_set  files[SENSOR_PORTS];
 
 unsigned long * ccam_dma_buf;
@@ -168,7 +171,8 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"trig   - send a single internal trigger (and puts internal trigger in single-shot mode\n"
 		"         In this special mode autoexposure/white balance will not work in most cases,\n"
 		"         camera should be set in triggered mode (TRIG=4), internal (TRIG_CONDITION=0).\n"
-		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.";
+		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.\n"
+        "timestamp_name - use <seconds>_<useconds>_<channel>.<ext> as a file name";
 
 int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int saveImage);
 void sendBuffer(void * buffer, int len);
@@ -909,6 +913,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	int color_mode;
 	char * mime_type;
 	char * extension;
+	int timestamp_start;
 
 	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR);     //get the current read pointer
 //    jpeg_start = lseek(fset->circbuf_fd, 1, SEEK_CUR)-1;   //just for testing, until rebuilt/rebooted kernel
@@ -960,6 +965,11 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		fset->jphead_fd = -1;
 		return -4;
 	}
+
+    // Copy timestamp (goes after the image data)
+    timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; // magic shift - should index first byte of the time stamp
+    if (timestamp_start >= buff_size) timestamp_start-=buff_size;
+    memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
 
 	if (use_Exif) {
 		D(fprintf(stderr,"frame_params.meta_index=0x%x\n",(int) frame_params.meta_index));
@@ -1062,8 +1072,13 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
    #define COLORMODE_MONO4    14 // monochrome, 4 blocks (but still with 2x2 macroblocks)
 	 */
 	printf("Content-Type: image/%s\r\n", mime_type);
-	if (saveImage) printf("Content-Disposition: attachment; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);     // does not open, asks for filename to save
-	else printf("Content-Disposition: inline; filename=\"elphelimg_%ld.%s\"\r\n", frame_params.timestamp_sec, extension);                   // opens in browser, asks to save on right-click
+    if (saveImage) {
+        printf("Content-Disposition: attachment; filename=\"%s%ld_%06d_%d.%s\"\r\n",      // does not open, asks for filename to save
+                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port, extension);
+    } else {
+        printf("Content-Disposition: inline; filename=\"%s%ld_%06d_%d.%s\"\r\n",                    // opens in browser, asks to save on right-click
+                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port, extension);
+    }
 
 	if (bufferImageData) {                                                                                                                  /* Buffer the whole file before sending over the network to make sure it will not be corrupted if the circular buffer will be overrun) */
 #if ELPHEL_DEBUG_THIS
@@ -1323,6 +1338,8 @@ void listener_loop(struct file_set *fset)
 					metaXML(fset, (sent2socket > 0) ? 1 : 0);               // 0 - new (send headers), 1 - continue, 2 - finish
 					sent2socket = 2;
 					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+                } else if (strcmp(cp1, "timestamp_name") == 0) {
+                    fset->timestamp_name = 1;
 				} else if (strcmp(cp1, "noexif") == 0) {
 					exif_enable = 0;
 				} else if (strcmp(cp1, "exif") == 0) {
@@ -1444,6 +1461,8 @@ void init_file_set(struct file_set *fset, int fset_sz)
         fset[i].framepars_dev_name = framepars_dev_names[i];
         fset[i].framepars_dev_fd = -1;
 		fset[i].port_num = 0;
+        fset[i].sensor_port = i;
+        fset[i].timestamp_name = 0;
 	}
 }
 
