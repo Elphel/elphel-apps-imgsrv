@@ -474,7 +474,7 @@ function substitute_value($ifd_entry) {
 		$camera_state_path = "/var/volatile/state/camera";
 		if (file_exists ($camera_state_path)) {
 			$pars= parse_ini_file($camera_state_path);
-			$model = $pars['application']."_".$par['mode'];
+			$model = $pars['application']."_".$pars['mode'];
 		} else {
 			$model = $DeviceModel;
 		}
