@@ -471,20 +471,22 @@ function substitute_value($ifd_entry) {
 		$ifd_entry->addChild('value', $DeviceBrand);
 		break;
 	case "MODEL":
-		if (file_exists ('/var/state/APPLICATION')) {
-			$model= file_get_contents('/var/state/APPLICATION');
-			if (file_exists ('/var/state/APPLICATION_MODE')) {
-				$model.=' CHN'.file_get_contents('/var/state/APPLICATION_MODE');
-			}
+		$camera_state_path = "/var/volatile/state/camera";
+		if (file_exists ($camera_state_path)) {
+			$pars= parse_ini_file($camera_state_path);
+			$model = $pars['application']."_".$par['mode'];
 		} else {
 			$model = $DeviceModel;
 		}
 		$ifd_entry->addChild ('value',$model);
 		break;
 	case "SOFTWARE":
+		/* TODO: 
 		if (file_exists("/usr/html/docs/")) {
 			$ifd_entry->addChild ('value',exec("ls /usr/html/docs/")); // filter
 		}
+		*/
+		$ifd_entry->addChild ('value',"https://github.com/Elphel/elphel393");
 		break;
 	case "SERIAL":
 		$s = "";
