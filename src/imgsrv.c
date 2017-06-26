@@ -555,6 +555,7 @@ int  metaXML(struct file_set *fset, int mode)
 	} else if (mode == 0) { // open the XML output (length is undefined - multiple frames meta data might be output)
 		printf("HTTP/1.0 200 OK\r\n");
 		printf("Server: Elphel Imgsrv\r\n");
+		printf("Access-Control-Allow-Origin: *\r\n");
 		printf("Content-Type: text/xml\r\n");
 		printf("Pragma: no-cache\r\n");
 		printf("\r\n");
@@ -831,6 +832,7 @@ int framePointersXML(struct file_set *fset)
 			cp_compressor_state);
 	printf("HTTP/1.0 200 OK\r\n");
 	printf("Server: Elphel Imgsrv\r\n");
+	printf("Access-Control-Allow-Origin: *\r\n");
 	printf("Content-Length: %d\r\n", strlen(s));
 	printf("Content-Type: text/xml\r\n");
 	printf("Pragma: no-cache\r\n");
@@ -852,6 +854,7 @@ int out1x1gif(void)
 {
 	char s[] = "HTTP/1.0 200 OK\r\n" \
 			"Server: Elphel Imgsrv\r\n" \
+			"Access-Control-Allow-Origin: *\r\n" \
 			"Content-Length: 35\r\n" \
 			"Content-Type: image/gif\r\n" \
 			"\r\n" \
@@ -879,6 +882,7 @@ void errorMsgXML(char * msg)
 	D(fprintf(stderr, ">%s< [%d bytes]", s, strlen(s)));
 	printf("HTTP/1.0 200 OK\r\n");
 	printf("Server: Elphel Imgsrv\r\n");
+	printf("Access-Control-Allow-Origin: *\r\n");
 	printf("Content-Length: %d\r\n", strlen(s));
 	printf("Content-Type: text/xml\r\n");
 	printf("Pragma: no-cache\r\n");
@@ -1211,6 +1215,7 @@ void listener_loop(struct file_set *fset)
 			if (!cp || (strlen(cp) == 0)) { // no url commands - probably the server url was manually entered
 				printf("HTTP/1.0 200 OK\r\n");
 				printf("Server: Elphel Imgsrv\r\n");
+				printf("Access-Control-Allow-Origin: *\r\n");
 				printf("Content-Length: %d\r\n", strlen(url_args));
 				printf("Content-Type: text/plain\r\n");
 				printf("\r\n");
@@ -1223,6 +1228,7 @@ void listener_loop(struct file_set *fset)
 				if (strncmp(cp, "wframe", 6) == 0) waitFrameSync(fset);
 				printf("HTTP/1.0 200 OK\r\n");
 				printf("Server: Elphel Imgsrv\r\n");
+				printf("Access-Control-Allow-Origin: *\r\n");
 				printf("Content-Length: 11\r\n");
 				printf("Content-Type: text/plain\r\n");
 				printf("\r\n");
@@ -1278,6 +1284,7 @@ void listener_loop(struct file_set *fset)
 					} else {
 						printf("HTTP/1.0 200 OK\r\n");
 						printf("Server: Elphel Imgsrv\r\n");
+						printf("Access-Control-Allow-Origin: *\r\n");
 						printf("Expires: 0\r\n");
 						printf("Pragma: no-cache\r\n");
 						buf_images = ((strcmp(cp1, "img") == 0) || (strcmp(cp1, "simg") == 0)) ? 0 : 1;
@@ -1308,6 +1315,7 @@ void listener_loop(struct file_set *fset)
 
 						printf("HTTP/1.0 200 OK\r\n");
 						printf("Server: Elphel Imgsrv\r\n");
+						printf("Access-Control-Allow-Origin: *\r\n");
 						printf("Expires: 0\r\n");
 						printf("Pragma: no-cache\r\n");
 						printf("Content-Type: multipart/x-mixed-replace;boundary=ElphelMultipartJPEGBoundary\r\n");
