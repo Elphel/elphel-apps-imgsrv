@@ -7,9 +7,13 @@ attic/*
 /.settings
 .directory
 .depend
-/image
 generated*
 sysroots
 bitbake-logs
 src/imgsrv.o
 src/imgsrv
+
+doxygen.tag
+/image
+/scripts
+/html
