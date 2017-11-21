@@ -13,6 +13,10 @@ bitbake-logs
 src/imgsrv.o
 src/imgsrv
 
+all_sources.lst
+excluding.lst
+including.lst
+
 doxygen.tag
 /image
 /scripts
