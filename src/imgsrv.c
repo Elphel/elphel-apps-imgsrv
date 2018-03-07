@@ -174,6 +174,9 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.\n"
         "timestamp_name - use <seconds>_<useconds>_<channel>.<ext> as a file name";
 
+// path to file containing serial number
+static const char path_to_serial[] = "/sys/devices/soc0/elphel393-init/serial";
+
 int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int saveImage);
 void sendBuffer(void * buffer, int len);
 void listener_loop(struct file_set *fset);
@@ -189,6 +192,21 @@ unsigned long  getCurrentFrameNumberCompressor( struct file_set *fset);
 
 /** @brief Read no more then 255 bytes from file */
 #define saferead255(f, d, l) read(f, d, ((l) < 256) ? (l) : 255)
+
+/**
+ * @brief read Camera Serial Number from SysFS
+ * @param[in]   filename   file path
+ * @param[in]   serial     pointer to buffer
+ * @return      0 if data was extracted successfully and negative error code otherwise
+ */
+int readCameraSerialNumberFromSysFS(char *path,char *serial){
+	int fd;
+	fd = open(path,O_RDONLY);
+	if (fd<0) return -1;
+	read(fd,serial,sizeof(serial));
+	close(fd);
+	return 0;
+}
 
 /**
  * @brief Print Exif data in XML format to @e stdout
@@ -256,6 +274,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	int hours = 0, minutes = 0;
 	double seconds = 0.0;
 	double longitude = 0.0, latitude = 0.0,  altitude = 0.0,  heading = 0.0,  roll = 0.0, pitch = 0.0, exposure = 0.0;
+	const char CameraSerialNumber[] = "FFFFFFFFFFFF";
 	val[255] = '\0';
 //	int fd_exif = open(fset->exif_dev_name, O_RDONLY);
 	if (fset->exif_dev_fd <0)
@@ -275,6 +294,11 @@ int printExifXML(int exif_page, struct file_set *fset)
 		fset->exif_dev_fd = -1;
 		return -1; // Error opening Exif
 	}
+	// Camera Serial Number
+	readCameraSerialNumberFromSysFS(&path_to_serial,CameraSerialNumber);
+	printf("<CameraSerialNumber>\"%s\"</CameraSerialNumber>\n", CameraSerialNumber);
+	printf("<CameraSerialNamber2>\"FFFFFFFFFFFF\"</CameraSerialNamber2>\n");
+
 	// Image Description
 	if (exif_dir[Exif_Image_ImageDescription_Index].ltag == Exif_Image_ImageDescription) { // Exif_Image_ImageDescription is present in template
 		lseek(fset->exif_dev_fd,
