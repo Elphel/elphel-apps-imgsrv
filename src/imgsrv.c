@@ -296,7 +296,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 	}
 	// Camera Serial Number
 	readCameraSerialNumberFromSysFS(&path_to_serial,CameraSerialNumber);
-	printf("<CameraSerialNumber>\"%s\"</CameraSerialNumber>\n", CameraSerialNumber);
+	printf("<CameraSerialNumber>\"%.2s:%.2s:%.2s:%.2s:%.2s:%.2s\"</CameraSerialNumber>\n",
+			&CameraSerialNumber[0],
+			&CameraSerialNumber[2],
+			&CameraSerialNumber[4],
+			&CameraSerialNumber[6],
+			&CameraSerialNumber[8],
+			&CameraSerialNumber[10]);
 
 	// Image Description
 	if (exif_dir[Exif_Image_ImageDescription_Index].ltag == Exif_Image_ImageDescription) { // Exif_Image_ImageDescription is present in template
