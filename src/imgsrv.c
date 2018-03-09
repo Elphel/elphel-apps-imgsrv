@@ -274,7 +274,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	int hours = 0, minutes = 0;
 	double seconds = 0.0;
 	double longitude = 0.0, latitude = 0.0,  altitude = 0.0,  heading = 0.0,  roll = 0.0, pitch = 0.0, exposure = 0.0;
-	const char CameraSerialNumber[] = "FFFFFFFFFFFE";
+	const char CameraSerialNumber[] = "FFFFFFFFFFFF";
 	val[255] = '\0';
 //	int fd_exif = open(fset->exif_dev_name, O_RDONLY);
 	if (fset->exif_dev_fd <0)
