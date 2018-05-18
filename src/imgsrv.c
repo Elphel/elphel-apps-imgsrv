@@ -98,6 +98,7 @@ struct file_set {
     int            framepars_dev_fd;
     int            sensor_port;
     int            timestamp_name;
+    int            base_chn;
 };
 
 static struct file_set  files[SENSOR_PORTS];
@@ -172,7 +173,10 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"         In this special mode autoexposure/white balance will not work in most cases,\n"
 		"         camera should be set in triggered mode (TRIG=4), internal (TRIG_CONDITION=0).\n"
 		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.\n"
-        "timestamp_name - use <seconds>_<useconds>_<channel>.<ext> as a file name";
+        "timestamp_name - format file name as <seconds>_<useconds>_<channel>.<ext>\n"
+		"bchn[n]- base channel = n, <channel> = n + port number (0-3) - for unique naming of multicamera systems."
+		;
+
 
 // path to file containing serial number
 static const char path_to_serial[] = "/sys/devices/soc0/elphel393-init/serial";
@@ -1111,10 +1115,10 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	printf("Content-Type: image/%s\r\n", mime_type);
     if (saveImage) {
         printf("Content-Disposition: attachment; filename=\"%s%ld_%06d_%d.%s\"\r\n",      // does not open, asks for filename to save
-                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port, extension);
+                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port + fset->base_chn, extension);
     } else {
         printf("Content-Disposition: inline; filename=\"%s%ld_%06d_%d.%s\"\r\n",                    // opens in browser, asks to save on right-click
-                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port, extension);
+                fset->timestamp_name?"":"elphelimg_", frame_params.timestamp_sec,  frame_params.timestamp_usec, fset->sensor_port + fset->base_chn, extension);
     }
 
 	if (bufferImageData) {                                                                                                                  /* Buffer the whole file before sending over the network to make sure it will not be corrupted if the circular buffer will be overrun) */
@@ -1205,6 +1209,7 @@ void listener_loop(struct file_set *fset)
 	int len = 0;
 	char * cp, *cp1, *cp2;
 	int slow, skip;         // reduce frame rate by slow
+	int base_chn;
 	int sent2socket = -1;   // 1 - img, 2 - meta, 3 - pointers
 	struct sockaddr_in sock;
 	int res;
@@ -1385,6 +1390,10 @@ void listener_loop(struct file_set *fset)
 					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
                 } else if (strcmp(cp1, "timestamp_name") == 0) {
                     fset->timestamp_name = 1;
+                } else if (strncmp(cp1, "bchn", 4) == 0) {
+                	cp2 = cp1 + 4;
+                	base_chn = strtol(cp2, NULL, 10);
+                    fset->base_chn = base_chn;
 				} else if (strcmp(cp1, "noexif") == 0) {
 					exif_enable = 0;
 				} else if (strcmp(cp1, "exif") == 0) {
@@ -1508,6 +1517,7 @@ void init_file_set(struct file_set *fset, int fset_sz)
 		fset[i].port_num = 0;
         fset[i].sensor_port = i;
         fset[i].timestamp_name = 0;
+        fset[i].base_chn = 0;
 	}
 }
 
