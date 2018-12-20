@@ -872,7 +872,7 @@ int framePointersXML(struct file_set *fset)
 	printf("Content-Type: text/xml\r\n");
 	printf("Pragma: no-cache\r\n");
 	printf("\r\n");
-	printf(s);
+	printf("%s",s);
 
 	munmap(frameParsAll, sizeof(struct framepars_all_t));
 	close(fset->framepars_dev_fd);
@@ -924,7 +924,7 @@ void errorMsgXML(char * msg)
 	printf("Content-Type: text/xml\r\n");
 	printf("Pragma: no-cache\r\n");
 	printf("\r\n");
-	printf(s);
+	printf("%s",s);
 }
 
 /**
