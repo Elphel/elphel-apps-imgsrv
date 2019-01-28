@@ -740,7 +740,8 @@ int framePointersXML(struct file_set *fset)
 {
 //	const char ctlFileName[] = "/dev/frameparsall";
 //	int fd_fparmsall;
-	char s[512]; // 341;
+	// set to 768 - sizeof(s) can be more than 512
+	char s[768]; // 512 // 341;
 	int p, wp, rp;
 	int nf = 0;
 	int nfl = 0;
