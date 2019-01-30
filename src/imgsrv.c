@@ -740,7 +740,11 @@ int framePointersXML(struct file_set *fset)
 {
 //	const char ctlFileName[] = "/dev/frameparsall";
 //	int fd_fparmsall;
-	char s[512]; // 341;
+	// set to 768 - sizeof(s) can be more than 512
+	// s is filled using sprintf function -
+	// consider switching to a safer version http://libslack.org/manpages/snprintf.3.html ?
+	// no - it will truncate xml and fail
+	char s[768]; // 512 // 341;
 	int p, wp, rp;
 	int nf = 0;
 	int nfl = 0;
