@@ -15,6 +15,7 @@
  *! metadir        - print currently loaded meta directory that matches variable Exif fields with the template
  *! exif=0         - print current Exif page (updated in real time)
  *! exif=NNN       - print one of the Exif pages in the buffer (debug feature, current buffer pointer is not known here)
+ *! chn=0..3       - sensor channel
  *!
  *! Copyright (C) 2007-2016 Elphel, Inc
  *! -----------------------------------------------------------------------------**
@@ -89,8 +90,19 @@ $chn = 0;
 
 $ExifDeviceTemplateFilename="/dev/exif_template";
 $ExifDeviceMetadirFilename= "/dev/exif_metadir";
+$TiffDeviceTemplateFilename="/dev/tiff_template";
 $ExifDeviceExifFilename=    "/dev/exif_exif";
+$TiffDeviceTiffFilename=    "/dev/tiff_tiff";
 $ExifDeviceMetaFilename=    "/dev/exif_meta";
+
+
+///$ExifDeviceTemplateFilename="/dev/null";
+///$ExifDeviceMetadirFilename= "/dev/null";
+///$TiffDeviceTemplateFilename="/dev/null";
+///$ExifDeviceExifFilename=    "/dev/null";
+///$ExifDeviceMetaFilename=    "/dev/null";
+
+
 
 $DeviceSNFilename = "/sys/devices/soc0/elphel393-init/serial";
 $DeviceRevisionFilename = "/sys/devices/soc0/elphel393-init/revision";
@@ -100,7 +112,9 @@ $DeviceModel = "Elphel393";
 //! if called from the command line - accepts just one parameter - configuration file,
 //! through CGI - accepts more parameters
 
-$ExifXMLName="/etc/Exif_template.xml";
+/// $ExifXMLName="/etc/Exif_template.xml";
+$ExifXMLName="./Exif_template.xml";
+
 $init=false;
 if ($_SERVER['REQUEST_METHOD']=="GET") {
 	if ($_GET["init"]!==NULL) {
@@ -111,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD']=="GET") {
 	}
 	if (isset($_GET['chn'])) $chn = $_GET['chn'];
 	$ExifDeviceExifFilename .= $chn;
-        $ExifDeviceMetaFilename .= $chn;
+    $ExifDeviceMetaFilename .= $chn;
+    $TiffDeviceTiffFilename .= $chn;
 } else {
 	foreach ($_SERVER['argv'] as $param) if (substr($param,0,4)=="init") {
 		$param=substr($param,5);
@@ -149,7 +164,7 @@ define("EXIF_LSEEK_ENABLE", 2); // rebuild buffer
 /// ===== init/init= CGI parameters or command line mode =======
 if ($init) { // configure Exif data
 	$exif_head= array (
-		0xff, 0xe1, // APP1 marker
+		0xff, 0xe1, // APP1 marker at byte 2 of the file
 		// offset=2 - start of Exif header
 		0x00, 0x00, // - length of the Exif header (including this length bytes) - we'll fill it later, we do not know it yet
 		0x45,0x78,0x69,0x66,0x00,0x00); // Exif header
@@ -159,90 +174,232 @@ if ($init) { // configure Exif data
 		0x4d,0x4d, // (MM) Big endian, MSB goes first in multi-byte data
 		0x00,0x2a,  // Tag Mark
 		0x00,0x00,0x00,0x08); //offset to first IDF (from the beginning of the TIFF header, so 8 is minimum)
-	$xml_exif = simplexml_load_file($ExifXMLName);
-	if ($xml_exif->GPSInfo) {
+	$tiff_data= array (// start of TIFF Header, data offsets will match indexes in this array
+		0x4d,0x4d, // (MM) Big endian, MSB goes first in multi-byte data
+		0x00,0x2a,  // Tag Mark
+		0x00,0x00,0x00,0x08); //offset to first IDF (from the beginning of the TIFF header, so 8 is minimum)
+	$xml_both = simplexml_load_file($ExifXMLName); // include tags for either Exif or Tiff
+	if ($xml_both->GPSInfo) {
 		/// remove all tags named "Compass..."
 		if ($nocompass) {
 			$tounset=array();
-			foreach ($xml_exif->GPSInfo->children() as $entry) if (strpos  ($entry->getName()  , "Compass" )!==false) $tounset[]=$entry->getName();
-			foreach ($tounset as $entry) unset ($xml_exif->GPSInfo->{$entry});
+			foreach ($xml_both->GPSInfo->children() as $entry) if (strpos  ($entry->getName()  , "Compass" )!==false) $tounset[]=$entry->getName();
+			foreach ($tounset as $entry) unset ($xml_both->GPSInfo->{$entry});
 		}
 		if ($noGPS) {
-			unset($xml_exif->GPSInfo);
-			unset($xml_exif->Image->GPSTag);
+			unset($xml_both->GPSInfo);
+			unset($xml_both->Image->GPSTag);
 		}
 	}
+	// now copy filtered $xml_both to $xml_exif and $xml_tiff to filter them separately
+	$xml_exif = simplexml_load_string ( $xml_both->asXML());
+	foreach ($xml_exif->children() as $group){
+	    $tounset=array();
+	    foreach ($group->children() as $entry) if ($entry->attributes()['mode'] == 'T') $tounset[]=$entry->getName(); // keep if no mode, mode =='E' or mode == 'B' 
+	    foreach ($tounset as $entry) unset ($group->{$entry});
+	}
+	
+	$xml_tiff = simplexml_load_string ( $xml_both->asXML());
+	
+	foreach ($xml_tiff->children() as $group){
+	    $tounset=array();
+	    foreach ($group->children() as $entry) if ($entry->attributes()['mode'] == 'E') $tounset[]=$entry->getName(); // keep if no mode, mode =='E' or mode == 'B'
+	    foreach ($tounset as $entry) unset ($group->{$entry});
+	}
+	
+	$IFD_offset_exif=      count($exif_data);                                         // 8
+	$SUB_IFD_offset_exif=  12*count($xml_exif->Image->children())+2+4+$IFD_offset_exif;    // length of Image (main) IFD including length and offset to next
+	$GPSInfo_offset_exif=  12*count($xml_exif->Photo->children())+2+4+$SUB_IFD_offset_exif;// length of Photo IFD including length and offset to next
+	// Include or skip GPS IFD
+	$data_offset_exif=     $GPSInfo_offset_exif+(($xml_exif->GPSInfo)?(12*count($xml_exif->GPSInfo->children())+2+4):0); //$GPSInfo is optional
 
-	$IFD_offset=      count($exif_data);
-	$SUB_IFD_offset=  12*count($xml_exif->Image->children())+2+4+$IFD_offset;
-	$GPSInfo_offset=  12*count($xml_exif->Photo->children())+2+4+$SUB_IFD_offset;
-	$data_offset=     $GPSInfo_offset+(($xml_exif->GPSInfo)?(12*count($xml_exif->GPSInfo->children())+2+4):0); //$GPSInfo is optional
+	$IFD_offset_tiff=      count($tiff_data);                                         // 8
+	$SUB_IFD_offset_tiff=  12*count($xml_tiff->Image->children())+2+4+$IFD_offset_tiff;    // length of Image (main) IFD including length and offset to next
+	$GPSInfo_offset_tiff=  12*count($xml_tiff->Photo->children())+2+4+$SUB_IFD_offset_tiff;// length of Photo IFD including length and offset to next
+	// Include or skip GPS IFD
+	$data_offset_tiff=     $GPSInfo_offset_tiff+(($xml_tiff->GPSInfo)?(12*count($xml_tiff->GPSInfo->children())+2+4):0); //$GPSInfo is optional
+	
+	
 	if ($_SERVER['REQUEST_METHOD']) {
 		echo "<pre>";
-		printf ("IFD_offset=0x%x\n",$IFD_offset);
-		printf ("SUB_IFD_offset=0x%x\n",$SUB_IFD_offset);
-		printf ("GPSInfo_offset=0x%x\n",$GPSInfo_offset);
-		printf ("data_offset=0x%x\n",$data_offset);
+		printf ("IFD_offset_exif=0x%x\n",$IFD_offset_exif);
+		printf ("SUB_IFD_offset_exif=0x%x\n",$SUB_IFD_offset_exif);
+		printf ("GPSInfo_offset_exif=0x%x\n",$GPSInfo_offset_exif);
+		printf ("data_offset_exif=0x%x\n",$data_offset_exif);
+		
+		printf ("IFD_offset_tiff=0x%x\n",$IFD_offset_tiff);
+		printf ("SUB_IFD_offset_tiff=0x%x\n",$SUB_IFD_offset_tiff);
+		printf ("GPSInfo_offset_tiff=0x%x\n",$GPSInfo_offset_tiff);
+		printf ("data_offset_tiff=0x%x\n",$data_offset_tiff);
 	}
-
-	/// Now modify variable fields substituting values
-	foreach ($xml_exif->Image->children()   as $entry) substitute_value($entry);
-	foreach ($xml_exif->Photo->children()   as $entry) substitute_value($entry);
+/*
+IFD_offset=0x8
+SUB_IFD_offset=0x86
+GPSInfo_offset=0xbc
+data_offset=0xbc
+ */	
+//	printf("\n\n1 - exif_head:\n"); print_r($exif_head);
+//	printf("\n\n1 - exif_data\n");  print_r($exif_data);
+//	printf("\n\n1 - tiff_data\n");  print_r($tiff_data);
+	
+	
+	
+	/// Now modify variable fields substituting values. Has to be separate, as it uses addresses calculated from remaining tags ($SUB_IFD_offset_*,$GPSInfo_offset_*
+	// for ---- Exif ----
+	foreach ($xml_exif->Image->children()   as $entry) substitute_value($entry, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
+	foreach ($xml_exif->Photo->children()   as $entry) substitute_value($entry, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
 	if ($xml_exif->GPSInfo) {
-		foreach ($xml_exif->GPSInfo->children() as $entry) substitute_value($entry);
+	    foreach ($xml_exif->GPSInfo->children() as $entry) substitute_value($entry, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
 	}
-	$ifd_pointer=$IFD_offset;
-	$data_pointer=$data_offset;
-	start_ifd(count($xml_exif->Image->children()));
-	foreach ($xml_exif->Image->children() as $entry) process_ifd_entry($entry,0);
-	finish_ifd();
+	$ifd_pointer_exif=$IFD_offset_exif;
+	$data_pointer_exif=$data_offset_exif;
+//	printf("ifd_pointer_exif= % d, data_pointer_exif = %d, count(xml_exif->Image->children())=%d\n",$ifd_pointer_exif, $data_pointer_exif, count($xml_exif->Image->children()));
+	
+	start_ifd(count($xml_exif->Image->children()), $exif_data, $ifd_pointer_exif);
+	
+//	printf("ifd_pointer_exif= % d, data_pointer_exif = %d\n",$ifd_pointer_exif, $data_pointer_exif);
+//	printf("\n\n0 - exif_data\n");  print_r($exif_data);
+	
+	foreach ($xml_exif->Image->children() as $entry) process_ifd_entry($entry, 0, $exif_data, $ifd_pointer_exif, $data_pointer_exif, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
+	finish_ifd($exif_data, $ifd_pointer_exif);
 
-	$ifd_pointer=$SUB_IFD_offset;
-	start_ifd(count($xml_exif->Photo->children()));
-	foreach ($xml_exif->Photo->children() as $entry) process_ifd_entry($entry,1);
-	finish_ifd();
+	$ifd_pointer_exif=$SUB_IFD_offset_exif;
+	start_ifd(count($xml_exif->Photo->children()), $exif_data, $ifd_pointer_exif);
+	foreach ($xml_exif->Photo->children() as $entry) process_ifd_entry($entry, 1, $exif_data, $ifd_pointer_exif, $data_pointer_exif, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
+	finish_ifd($exif_data, $ifd_pointer_exif);
 
 	if ($xml_exif->GPSInfo) {
-		$ifd_pointer=$GPSInfo_offset;
-		start_ifd(count($xml_exif->GPSInfo->children()));
-		foreach ($xml_exif->GPSInfo->children() as $entry) process_ifd_entry($entry,2);
-		finish_ifd();
+		$ifd_pointer_exif=$GPSInfo_offset_exif;
+		start_ifd(count($xml_exif->GPSInfo->children()), $exif_data, $ifd_pointer_exif);
+		foreach ($xml_exif->GPSInfo->children() as $entry) process_ifd_entry($entry, 2, $exif_data, $ifd_pointer_exif, $data_pointer_exif, $SUB_IFD_offset_exif, $GPSInfo_offset_exif);
+		finish_ifd($exif_data, $ifd_pointer_exif);
 	}
 	$exif_len=count($exif_head)+count($exif_data)-$Exif_length_offset;
+//	printf("\nexif_len = %d, Exif_length_offset = %d\n",$exif_len, $Exif_length_offset);
 	$exif_head[$Exif_length_offset]=  ($exif_len >> 8) & 0xff;
 	$exif_head[$Exif_length_offset+1]= $exif_len       & 0xff;
+	
+//	printf("\n\n2 - exif_head:\n"); print_r($exif_head);
+//	printf("\n\n2 - exif_data\n");  print_r($exif_data);
+	
+	// ---- for Tiff ---- Need to catch $STRIPOFFSETS
+	
+	foreach ($xml_tiff->Image->children()   as $entry) substitute_value($entry, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	foreach ($xml_tiff->Photo->children()   as $entry) substitute_value($entry, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	if ($xml_tiff->GPSInfo) {
+	    foreach ($xml_tiff->GPSInfo->children() as $entry) substitute_value($entry, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	}
+	$ifd_pointer_tiff=$IFD_offset_tiff;
+	$data_pointer_tiff=$data_offset_tiff;
+	
+	start_ifd(count($xml_tiff->Image->children()), $tiff_data, $ifd_pointer_tiff);
+	foreach ($xml_tiff->Image->children() as $entry) {
+	    if ($entry->getName() == "StripOffsets") {
+	        $StripOffsets_ifd_pointer =         $ifd_pointer_tiff; // put STRIPOFFSET long here when known
+	        $StripOffsets_data_pointer =        $data_pointer_tiff; // put STRIPOFFSET long here when known
+	        $StripOffsets_entry =               $entry;
+	    }
+	    process_ifd_entry($entry, 0, $tiff_data, $ifd_pointer_tiff, $data_pointer_tiff, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	}
+	finish_ifd($tiff_data, $ifd_pointer_tiff);
+	
+	$ifd_pointer_tiff=$SUB_IFD_offset_tiff;
+	start_ifd(count($xml_tiff->Photo->children()), $tiff_data, $ifd_pointer_tiff);
+	foreach ($xml_tiff->Photo->children() as $entry) process_ifd_entry($entry, 1, $tiff_data, $ifd_pointer_tiff, $data_pointer_tiff, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	finish_ifd($tiff_data, $ifd_pointer_tiff);
 
+	
+	if ($xml_tiff->GPSInfo) {
+	    $ifd_pointer_tiff=$GPSInfo_offset_tiff;
+	    start_ifd(count($xml_tiff->GPSInfo->children()), $tiff_data, $ifd_pointer_tiff);
+	    foreach ($xml_tiff->GPSInfo->children() as $entry) process_ifd_entry($entry, 2, $tiff_data, $ifd_pointer_tiff, $data_pointer_tiff, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	    finish_ifd($tiff_data, $ifd_pointer_tiff);
+	}
+	
+//	printf("\n\nbefore STRIPOFFSETS - tiff_data\n");  print_r($tiff_data);
+//	printf("StripOffsets_ifd_pointer= 0x%x (%d)\n", $StripOffsets_ifd_pointer, $StripOffsets_ifd_pointer);
+//	printf("StripOffsets_data_pointer=0x%x (%d)\n", $StripOffsets_data_pointer, $StripOffsets_data_pointer);
+//	printf("count(tiff_data)=0x%x (%d)\n", count($tiff_data), count($tiff_data));
+	if ($StripOffsets_ifd_pointer) {
+//    	echo "StripOffsets_entry:";
+//    	echo $StripOffsets_entry->getName();
+    	$StripOffsets_entry->addChild('value', count($tiff_data));
+    	// re-process
+//    	process_ifd_entry($StripOffsets_entry, 0, $tiff_data, $StripOffsets_ifd_pointer, $StripOffsets_data_pointer, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff, 1);
+    	process_ifd_entry($StripOffsets_entry, 0, $tiff_data, $StripOffsets_ifd_pointer, $StripOffsets_data_pointer, $SUB_IFD_offset_tiff, $GPSInfo_offset_tiff);
+	}
 	$Exif_str="";
 	for ($i=0; $i<count($exif_head);$i++) $Exif_str.= chr ($exif_head[$i]);
 	for ($i=0; $i<count($exif_data);$i++) $Exif_str.= chr ($exif_data[$i]);
+//	printf("\ - Exif_str\n");  hexdump($Exif_str);
+
+	$Tiff_str="";
+	for ($i=0; $i<count($tiff_data);$i++) $Tiff_str.= chr ($tiff_data[$i]);
+//	printf("\ - Tiff_str\n");  hexdump($Tiff_str);
+
 
 	$Exif_file  = fopen($ExifDeviceTemplateFilename, 'w');
 	fwrite ($Exif_file,$Exif_str); /// will disable and invalidate Exif data
 	fclose($Exif_file);
 
-	///Exif template is done, now we need a directory to map frame meta data to fields in the template.
-	$dir_sequence=array();
-	$dir_entries=array();
+	$Tiff_file  = fopen($TiffDeviceTemplateFilename, 'w');
+	fwrite ($Tiff_file,$Tiff_str); /// will disable and invalidate Exif data
+	fclose($Tiff_file);
 
-	foreach ($xml_exif->Image->children()   as $entry) addDirEntry($entry);
-	foreach ($xml_exif->Photo->children()   as $entry) addDirEntry($entry);
+	$dir_entries_exif=array();
+	$exif_head_length = count($exif_head);
+	foreach ($xml_exif->Image->children()   as $entry) addDirEntry($entry, $dir_entries_exif, $exif_head_length);
+	foreach ($xml_exif->Photo->children()   as $entry) addDirEntry($entry, $dir_entries_exif, $exif_head_length);
 	if ($xml_exif->GPSInfo) {
-		foreach ($xml_exif->GPSInfo->children() as $entry) addDirEntry($entry);
+	    foreach ($xml_exif->GPSInfo->children() as $entry) addDirEntry($entry, $dir_entries_exif, $exif_head_length);
 	}
-	array_multisort($dir_sequence,$dir_entries);
+//	printf("\ndir_entries_exif:\n"); print_r($dir_entries_exif);
+	ksort ($dir_entries_exif);
+//	printf("\ndir_entries_exif sorted:\n"); print_r($dir_entries_exif);
+	
+	$dir_entries_tiff=array();
+	foreach ($xml_tiff->Image->children()   as $entry) addDirEntry($entry, $dir_entries_tiff, 0);
+	foreach ($xml_tiff->Photo->children()   as $entry) addDirEntry($entry, $dir_entries_tiff, 0);
+	if ($xml_tiff->GPSInfo) {
+	    foreach ($xml_tiff->GPSInfo->children() as $entry) addDirEntry($entry, $dir_entries_tiff, 0);
+	}
+//	printf("\ndir_entries_tiff:\n"); print_r($dir_entries_tiff);
+	ksort ($dir_entries_tiff);
+//	printf("\ndir_entries_tiff sorted:\n"); print_r($dir_entries_tiff);
+	
+	// combine directories
+	$dir_entries=array();
+	foreach ($dir_entries_exif as $key => $value){
+	    $dir_entries[$key] = array("ltag"=>$value['ltag'],"dst_exif"=>$value['dst'],"dst_tiff"=>0,"len"=>$value['len']);
+	}
+	foreach ($dir_entries_tiff as $key => $value){
+	    if (array_key_exists($key, $dir_entries)){
+	        $dir_entries[$key]["dst_tiff"] = $value['dst'];
+	    } else {
+	        $dir_entries[$key] = array("ltag"=>$value['ltag'],"dst_exif"=>0,"dst_tiff"=>$value['dst'],"len"=>$value['len']);
+	    }
+	}
+	ksort ($dir_entries);
+	// get rid of keys:
+	$dir_entries_val=array();
+	foreach ($dir_entries as $value)$dir_entries_val[] = $value;
+	$dir_entries = $dir_entries_val;
 
 	$frame_meta_size=0;
 	for ($i=0;$i<count($dir_entries);$i++) {
 		$dir_entries[$i]["src"]=$frame_meta_size;
 		$frame_meta_size+=$dir_entries[$i]["len"];
 	}
-
+//	printf("\ndir_entries sorted:\n"); print_r($dir_entries);
+	
 	$Exif_str="";
-	foreach ($dir_entries as $entry) $Exif_str.=pack("V*",$entry["ltag"],$entry["len"],$entry["src"],$entry["dst"]);
+	foreach ($dir_entries as $entry) $Exif_str.=pack("V*",$entry["ltag"],$entry["len"],$entry["src"],($entry["dst_exif"] +($entry["dst_tiff"] << 16)));
+//	printf("\ - Exif_str (directory)\n");  hexdump($Exif_str);
+	
 	$Exif_meta_file  = fopen($ExifDeviceMetadirFilename, 'w');
 	fwrite ($Exif_meta_file,$Exif_str); /// will disable and invalidate Exif data
 	fclose($Exif_meta_file);
-
+	
 	///Rebuild buffer and enable Exif generation/output:
 
 	$Exif_file  = fopen($ExifDeviceTemplateFilename, 'w');
@@ -254,10 +411,14 @@ if ($init) { // configure Exif data
 	}
 	if ($_SERVER['REQUEST_METHOD']) {
 		echo "<hr/>\n";
-		test_print_header();
+		test_print_header($exif_head, $exif_data);
 		echo "<hr/>\n";
-		test_print_directory();
+		$tiff_head=array(); // empty
+		test_print_header($tiff_head, $tiff_data);
+		echo "<hr/>\n";
+		test_print_directory($dir_entries,$frame_meta_size);
 	}
+	
 } //if ($init) // configure Exif data
 /// ===== processing optional parameters =======
 /// ===== read template =======
@@ -304,6 +465,19 @@ if ($_GET["template"]!==NULL) {
 	echo "read ".strlen($template)." bytes<br/>\n";
 	hexdump($template);
 }
+if ($_GET["template_tiff"]!==NULL) {
+    $Exif_file  = fopen($TiffDeviceTemplateFilename, 'r');
+    fseek ($Exif_file, 0, SEEK_END) ;
+    echo "<hr/>\n";
+    echo "ftell()=".ftell($Exif_file).", ";
+    fseek ($Exif_file, 0, SEEK_SET) ;
+    $template=fread ($Exif_file, 4096);
+    fclose($Exif_file);
+    echo "read ".strlen($template)." bytes<br/>\n";
+    hexdump($template);
+}
+
+
 /// ===== read meta directory =======
 if ($_GET["metadir"]!==NULL) {
 	$Exif_file  = fopen($ExifDeviceMetadirFilename, 'r');
@@ -336,12 +510,27 @@ if ($_GET["exif"]!==NULL) {
 	echo "read ".strlen($exif_data)." bytes<br/>\n";
 	hexdump($exif_data);
 }
+if ($_GET["tiff"]!==NULL) {
+    $frame=$_GET["tiff"]+0;
+    echo "<hr/>\n";
+    printf ("Reading frame %d from %s, ",$frame,$ExifDeviceTiffFilename);
+    $Tiff_file  = fopen($TiffDeviceTiffFilename, 'r');
+    fseek ($Tiff_file, 1, SEEK_END) ;
+    $tiff_size=ftell($Tiff_file);
+    if ($frame) fseek ($Tiff_file, $frame, SEEK_END) ;
+    else        fseek ($Tiff_file, 0, SEEK_SET) ;
+    echo "ftell()=".ftell($Tiff_file).", ";
+    $tiff_data=fread ($Tiff_file, $tiff_size);
+    fclose($Tiff_file);
+    echo "read ".strlen($tiff_data)." bytes<br/>\n";
+    hexdump($tiff_data);
+}
 exit(0);
 /// ======================================= Functions ======================================
-function hexdump($data) {
-	global $exif_head, $exif_data;
+function hexdump(&$data) {
+//	global $exif_head, $exif_data;
 	$l=strlen($data);
-	printf ("<h2>Exif size=%d bytes</h2>\n",$l);
+	printf ("<h2>Data size=%d bytes</h2>\n",$l);
 	printf ("<table border=\"0\">\n");
 	for ($i=0; $i<$l;$i=$i+16) {
 		printf("<tr><td>%03x</td><td>|</td>\n",$i);
@@ -374,18 +563,21 @@ function print_directory($dir_entries) {
 	foreach ($dir_entries as $entry)  if (($entry[3]+$entry[2])>$meta_size) $meta_size=$entry[3]+$entry[2];
 	printf ("<h2>Frame meta data size=%d bytes</h2>\n",$meta_size);
 	printf ("<table border=\"1\">\n");
-	printf ("<tr><td>ltag</td><td>meta offset</td><td>Exif offset</td><td>length</td></tr>\n");
+	printf ("<tr><th>ltag</th><th>meta offset</th><th>Exif offset</th><th>Tiff offset</th><th>length</th></tr>\n");
 	foreach ($dir_entries as $entry) {
-		printf ("<tr><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td></tr>\n",$entry[1],$entry[3],$entry[4],$entry[2]);
+	    $exif_offset = $entry[4] & 0xfff;
+	    $tiff_offset = $entry[4] >> 16;
+	    printf ("<tr><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td></tr>\n",$entry[1],$entry[3],$exif_offset,$tiff_offset,$entry[2]);
 	}
 	printf ("</table>");
 }
 
-function test_print_header() {
-	global $exif_head, $exif_data;
-	$lh=count($exif_head);
+function test_print_header(&$exif_head, &$exif_data) {
+//	global $exif_head, $exif_data;
+    $lh = 0;
+    if ($exif_head) $lh=count($exif_head);
 	$ld=count($exif_data);
-	printf ("<h2>Exif size=%d bytes (head=%d, data=%d)</h2>\n",$lh+$ld,$lh,$ld);
+	printf ("<h2>Exif/Tiff size=%d bytes (head=%d, data=%d)</h2>\n",$lh+$ld,$lh,$ld);
 	printf ("<table border=\"0\">\n");
 	for ($i=0; $i<$lh+$ld;$i=$i+16) {
 		printf("<tr><td>%03x</td><td>|</td>\n",$i);
@@ -413,27 +605,30 @@ function test_print_header() {
 	printf ("</table>");
 }
 
-function test_print_directory() {
-	global $dir_entries,$frame_meta_size;
-	printf ("<h2>Frame meta data size=%d bytes</h2>\n",$frame_meta_size);
+function test_print_directory(&$dir_entries, &$frame_meta_size) {
+//	global $dir_entries,$frame_meta_size;
+	printf ("<h2>Frame meta data size=%d bytes</h2>\n", $frame_meta_size);
 	printf ("<table border=\"1\">\n");
-	printf ("<tr><td>ltag</td><td>meta offset</td><td>Exif offset</td><td>length</td></tr>\n");
+	printf ("<tr><th>ltag</th><th>meta offset</th><th>Exif offset</th><th>Tiff offset</th><th>length</th></tr>\n");
 	foreach ($dir_entries as $entry)
-		printf ("<tr><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td></tr>\n",$entry["ltag"],$entry["src"],$entry["dst"],$entry["len"]);
+	    printf ("<tr><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td><td>0x%x</td></tr>\n",$entry["ltag"],$entry["src"],$entry["dst_exif"],$entry["dst_tiff"],$entry["len"]);
 	printf ("</table>");
 }
 
 
 
 
-function start_ifd($count) {
-	global $exif_data, $ifd_pointer;
+function start_ifd($count, &$exif_data, &$ifd_pointer) {
+//	global $exif_data, $ifd_pointer;
 	// printf("start_ifd: ifd_pointer=0x%04x \n", $ifd_pointer);
 	$exif_data[$ifd_pointer++]= ($count >> 8) & 0xff;
 	$exif_data[$ifd_pointer++]= $count & 0xff; // may apply & 0xff in the end to all elements
+	
+//	printf("++++start_ifd(): ifd_pointer= %d, exif_data=\n",$ifd_pointer); print_r($exif_data);
+	
 }
-function finish_ifd() { // we do not have additional IFDs
-	global $exif_data, $ifd_pointer;
+function finish_ifd(&$exif_data, &$ifd_pointer) { // we do not have additional IFDs
+//	global $exif_data, $ifd_pointer;
 	// printf("finish_ifd: ifd_pointer=0x%04x \n", $ifd_pointer);
 	$exif_data[$ifd_pointer++]=0;
 	$exif_data[$ifd_pointer++]=0;
@@ -443,9 +638,9 @@ function finish_ifd() { // we do not have additional IFDs
 
 
 //pass2 - building map from frame meta to Exif template
-function addDirEntry($ifd_entry) {
-	global $dir_sequence,$dir_entries,$exif_head;
-	$lh=count($exif_head);
+function addDirEntry0($ifd_entry, &$dir_sequence, &$dir_entries, $lh) {
+//	global $dir_sequence,$dir_entries,$exif_head;
+//	$lh=count($exif_head);
 
 	$attrs = $ifd_entry->attributes();
 	//  var_dump($attrs);
@@ -461,9 +656,30 @@ function addDirEntry($ifd_entry) {
 	}
 }
 
-function substitute_value($ifd_entry) {
-	global $SUB_IFD_offset,$GPSInfo_offset;
-	global $DeviceSNFilename, $DeviceRevisionFilename, $DeviceBrand, $DeviceModel;
+function addDirEntry($ifd_entry, &$dir_entries, $lh) {
+    //	global $dir_sequence,$dir_entries,$exif_head;
+    //	$lh=count($exif_head);
+    
+    $attrs = $ifd_entry->attributes();
+    //  var_dump($attrs);
+    //  if  (array_key_exists  ( "seq"  , $attrs  )) {
+    if  ($attrs["seq"]) {
+        //     echo $attrs["seq"].;
+        $key=((string) $attrs["seq"])+0;
+        $len= (integer) $ifd_entry->value_length;
+        $offs=$lh+(integer) $ifd_entry->value_offest;
+        //     if (array_key_exists  ( "dlen"  , $attrs  ))
+        if  ($attrs["dlen"])  $len=min($len,((string) $attrs["dlen"])+0);
+        $dir_entries[$key]=array("ltag"=>((integer)$ifd_entry->ltag),"dst"=>$offs,"len"=>$len);
+    }
+}
+        
+
+
+
+function substitute_value($ifd_entry, $SUB_IFD_offset, $GPSInfo_offset) {
+//	global $SUB_IFD_offset,$GPSInfo_offset;
+	global $DeviceSNFilename, $DeviceRevisionFilename, $DeviceBrand, $DeviceModel; // keep these globals
 	$attrs = $ifd_entry->attributes();
 
 	switch ($attrs["function"]) {
@@ -486,7 +702,7 @@ function substitute_value($ifd_entry) {
 			$ifd_entry->addChild ('value',exec("ls /usr/html/docs/")); // filter
 		}
 		*/
-		$ifd_entry->addChild ('value',"https://github.com/Elphel/elphel393");
+		$ifd_entry->addChild ('value',"https://git.elphel.com/Elphel/elphel393");
 		break;
 	case "SERIAL":
 		$s = "";
@@ -501,19 +717,30 @@ function substitute_value($ifd_entry) {
 	case "GPSTAG":
 		$ifd_entry->addChild ('value',$GPSInfo_offset);
 		break;
+//	case "STRIPOFFSETS": // temporary - maybe remove this function
+//	    $ifd_entry->addChild ('value',$GPSInfo_offset);
+//	    break;
+	    
+		//STRIPOFFSETS
 	}
 }
 
 
-function process_ifd_entry($ifd_entry, $group) {
-	global $exif_data, $ifd_pointer, $data_pointer,$SUB_IFD_offset,$GPSInfo_offset;
+function process_ifd_entry($ifd_entry, $group, &$exif_data, &$ifd_pointer, &$data_pointer, $SUB_IFD_offset, $GPSInfo_offset, $debug=0) {
+//	global $exif_data, $ifd_pointer, $data_pointer,$SUB_IFD_offset,$GPSInfo_offset;
 	$attrs = $ifd_entry->attributes();
 	$ifd_tag=   ((string) $attrs["tag"])+0;
 	$ifd_format=constant("EXIF_".$attrs["format"]);
 	$ifd_count= $attrs["count"];
-	// echo "\nifd_tag=$ifd_tag, entry=";print_r($ifd_entry);
-	// echo "\nifd_count=$ifd_count";
-	// echo "\nifd_bytes:";var_dump($ifd_bytes);
+	if ($debug){
+	    echo "\nifd_tag "; echo $ifd_tag; echo "\n";
+	    echo "ifd_format "; echo $ifd_format; echo "\n";
+	    echo "ifd_count "; echo $ifd_count; echo "\n";
+	
+	    echo "\nifd_tag=$ifd_tag, entry=";print_r($ifd_entry);
+	    echo "\nifd_count=$ifd_count";
+	    echo "\nifd_bytes:";var_dump($ifd_bytes);
+	}
 	if (!$ifd_count) {
 		if($ifd_format==EXIF_ASCII) $ifd_count=strlen($ifd_entry->value)+1;
 		else $ifd_count=1 ; /// may change?

@@ -308,10 +308,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 			&CameraSerialNumber[8],
 			&CameraSerialNumber[10]);
 
+	//TODO: Check .dst_exif > 0, maybe add same for Tiff fields
+
+
 	// Image Description
 	if (exif_dir[Exif_Image_ImageDescription_Index].ltag == Exif_Image_ImageDescription) { // Exif_Image_ImageDescription is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Image_ImageDescription_Index].dst,
+				exif_page_start + exif_dir[Exif_Image_ImageDescription_Index].dst_exif,
 				SEEK_SET);
 		saferead255(fset->exif_dev_fd, val, exif_dir[Exif_Image_ImageDescription_Index].len);
 		printf("<ImageDescription>\"%s\"</ImageDescription>\n", val);
@@ -319,7 +322,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Exif_Image_ImageNumber_Index           0x13
 	if (exif_dir[Exif_Image_ImageNumber_Index].ltag == Exif_Image_ImageNumber) { // Exif_Image_ImageNumber_Index is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Image_ImageNumber_Index].dst,
+				exif_page_start + exif_dir[Exif_Image_ImageNumber_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 4);
 		sprintf(val, "%ld", (long)__cpu_to_be32( rational3[0]));
@@ -329,7 +332,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Exif_Image_Orientation_Index           0x14
 	if (exif_dir[Exif_Image_Orientation_Index].ltag == Exif_Image_Orientation) { // Exif_Image_Orientation_Index is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Image_Orientation_Index].dst,
+				exif_page_start + exif_dir[Exif_Image_Orientation_Index].dst_exif,
 				SEEK_SET);
 		rational3[0] = 0;
 		read(fset->exif_dev_fd, rational3, 2);
@@ -340,7 +343,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Exif_Image_PageNumber
 	if (exif_dir[Exif_Image_PageNumber_Index].ltag == Exif_Image_PageNumber) { // Exif_Image_Orientation_Index is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Image_PageNumber_Index].dst,
+				exif_page_start + exif_dir[Exif_Image_PageNumber_Index].dst_exif,
 				SEEK_SET);
 		rational3[0] = 0;
 		read(fset->exif_dev_fd, rational3, 2);
@@ -351,14 +354,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// DateTimeOriginal (with subseconds)
 	if (exif_dir[Exif_Photo_DateTimeOriginal_Index].ltag == Exif_Photo_DateTimeOriginal) {
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Photo_DateTimeOriginal_Index].dst,
+				exif_page_start + exif_dir[Exif_Photo_DateTimeOriginal_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, val, 19);
 		val[19] = '\0';
 		if (exif_dir[Exif_Photo_SubSecTimeOriginal_Index].ltag == Exif_Photo_SubSecTimeOriginal) {
 			val[19] = '.';
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_Photo_SubSecTimeOriginal_Index].dst,
+					exif_page_start + exif_dir[Exif_Photo_SubSecTimeOriginal_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, &val[20], 7);
 			val[27] = '\0';
@@ -368,7 +371,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Exif_Photo_ExposureTime
 	if (exif_dir[Exif_Photo_ExposureTime_Index].ltag == Exif_Photo_ExposureTime) { // Exif_Photo_ExposureTime is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Photo_ExposureTime_Index].dst,
+				exif_page_start + exif_dir[Exif_Photo_ExposureTime_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 8);
 		exposure = (1.0 * __cpu_to_be32( rational3[0])) / __cpu_to_be32( rational3[1]);
@@ -379,7 +382,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Exif_Photo_MakerNote
 	if (exif_dir[Exif_Photo_MakerNote_Index].ltag == Exif_Photo_MakerNote) { // Exif_Photo_MakerNote is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_Photo_MakerNote_Index].dst,
+				exif_page_start + exif_dir[Exif_Photo_MakerNote_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd,  makerNote, 64);
 		sprintf(val,
@@ -406,7 +409,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// GPS measure mode
 	if (exif_dir[Exif_GPSInfo_GPSMeasureMode_Index].ltag == Exif_GPSInfo_GPSMeasureMode) {
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_GPSMeasureMode_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_GPSMeasureMode_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, val, 1);
 		val[1] = '\0';
@@ -416,13 +419,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// GPS date/time
 	if (exif_dir[Exif_GPSInfo_GPSDateStamp_Index].ltag == Exif_GPSInfo_GPSDateStamp) {
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_GPSDateStamp_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_GPSDateStamp_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, val, 10);
 		val[10] = '\0';
 		if (exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].ltag == Exif_GPSInfo_GPSTimeStamp) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, rational3, 24);
 			hours =   __cpu_to_be32( rational3[0]);
@@ -433,7 +436,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 		printf("<GPSDateTime>\"%s\"</GPSDateTime>\n", val);
 /*
         printf("<DBGGPSDateTime>\"0x%x 0x%x 0x%x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\"</DBGGPSDateTime>\n",
-                Exif_GPSInfo_GPSDateStamp, Exif_GPSInfo_GPSDateStamp_Index, exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].dst,
+                Exif_GPSInfo_GPSDateStamp, Exif_GPSInfo_GPSDateStamp_Index, exif_dir[Exif_GPSInfo_GPSTimeStamp_Index].dst_exif,
                 val[0],val[1],val[2],val[3],val[4],val[5],val[6],val[7],val[8],val[9],val[10],val[11],val[12]);
 */
 	}
@@ -442,13 +445,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// GPS Longitude
 	if (exif_dir[Exif_GPSInfo_GPSLongitude_Index].ltag == Exif_GPSInfo_GPSLongitude) { // Exif_GPSInfo_GPSLongitude is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_GPSLongitude_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_GPSLongitude_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 24);
 		longitude = __cpu_to_be32( rational3[0]) / (1.0 * __cpu_to_be32( rational3[1])) + __cpu_to_be32( rational3[2]) / (60.0 * __cpu_to_be32( rational3[3]));
 		if (exif_dir[Exif_GPSInfo_GPSLongitudeRef_Index].ltag == Exif_GPSInfo_GPSLongitudeRef) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_GPSLongitudeRef_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_GPSLongitudeRef_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, val, 1);
 			if (val[0] != 'E') longitude = -longitude;
@@ -459,13 +462,13 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// GPS Latitude
 	if (exif_dir[Exif_GPSInfo_GPSLatitude_Index].ltag == Exif_GPSInfo_GPSLatitude) { // Exif_GPSInfo_GPSLatitude is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_GPSLatitude_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_GPSLatitude_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 24);
 		latitude = __cpu_to_be32( rational3[0]) / (1.0 * __cpu_to_be32( rational3[1])) + __cpu_to_be32( rational3[2]) / (60.0 * __cpu_to_be32( rational3[3]));
 		if (exif_dir[Exif_GPSInfo_GPSLatitudeRef_Index].ltag == Exif_GPSInfo_GPSLatitudeRef) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_GPSLatitudeRef_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_GPSLatitudeRef_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, val, 1);
 			if (val[0] != 'N') latitude = -latitude;
@@ -476,14 +479,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// GPS Altitude
 	if (exif_dir[Exif_GPSInfo_GPSAltitude_Index].ltag == Exif_GPSInfo_GPSAltitude) { // Exif_GPSInfo_GPSAltitude is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_GPSAltitude_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_GPSAltitude_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 8);
 		altitude = (1.0 * __cpu_to_be32( rational3[0])) / __cpu_to_be32( rational3[1]);
 
 		if (exif_dir[Exif_GPSInfo_GPSAltitudeRef_Index].ltag == Exif_GPSInfo_GPSAltitudeRef) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_GPSAltitudeRef_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_GPSAltitudeRef_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, val, 1);
 			if (val[0] != '\0') altitude = -altitude;
@@ -494,7 +497,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Compass Direction (magnetic)
 	if (exif_dir[Exif_GPSInfo_CompassDirection_Index].ltag == Exif_GPSInfo_CompassDirection) { // Exif_GPSInfo_CompassDirection is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_CompassDirection_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_CompassDirection_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 8);
 		heading = (1.0 * __cpu_to_be32( rational3[0])) / __cpu_to_be32( rational3[1]);
@@ -505,14 +508,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Compass Roll
 	if (exif_dir[Exif_GPSInfo_CompassRoll_Index].ltag == Exif_GPSInfo_CompassRoll) { // Exif_GPSInfo_CompassRoll is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_CompassRoll_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_CompassRoll_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 8);
 		roll = (1.0 * __cpu_to_be32( rational3[0])) / __cpu_to_be32( rational3[1]);
 
 		if (exif_dir[Exif_GPSInfo_CompassRollRef_Index].ltag == Exif_GPSInfo_CompassRollRef) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_CompassRollRef_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_CompassRollRef_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, val, 1);
 			if (val[0] != EXIF_COMPASS_ROLL_ASCII[0]) roll = -roll;
@@ -524,14 +527,14 @@ int printExifXML(int exif_page, struct file_set *fset)
 	// Compass Pitch
 	if (exif_dir[Exif_GPSInfo_CompassPitch_Index].ltag == Exif_GPSInfo_CompassPitch) { // Exif_GPSInfo_CompassPitch is present in template
 		lseek(fset->exif_dev_fd,
-				exif_page_start + exif_dir[Exif_GPSInfo_CompassPitch_Index].dst,
+				exif_page_start + exif_dir[Exif_GPSInfo_CompassPitch_Index].dst_exif,
 				SEEK_SET);
 		read(fset->exif_dev_fd, rational3, 8);
 		pitch = (1.0 * __cpu_to_be32( rational3[0])) / __cpu_to_be32( rational3[1]);
 
 		if (exif_dir[Exif_GPSInfo_CompassPitchRef_Index].ltag == Exif_GPSInfo_CompassPitchRef) {
 			lseek(fset->exif_dev_fd,
-					exif_page_start + exif_dir[Exif_GPSInfo_CompassPitchRef_Index].dst,
+					exif_page_start + exif_dir[Exif_GPSInfo_CompassPitchRef_Index].dst_exif,
 					SEEK_SET);
 			read(fset->exif_dev_fd, val, 1);
 			if (val[0] != EXIF_COMPASS_PITCH_ASCII[0]) pitch = -pitch;
