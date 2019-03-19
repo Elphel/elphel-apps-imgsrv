@@ -112,8 +112,8 @@ $DeviceModel = "Elphel393";
 //! if called from the command line - accepts just one parameter - configuration file,
 //! through CGI - accepts more parameters
 
-/// $ExifXMLName="/etc/Exif_template.xml";
-$ExifXMLName="./Exif_template.xml";
+$ExifXMLName="/etc/Exif_template.xml";
+///$ExifXMLName="./Exif_template.xml";
 
 $init=false;
 if ($_SERVER['REQUEST_METHOD']=="GET") {
@@ -346,6 +346,10 @@ data_offset=0xbc
 	fwrite ($Tiff_file,$Tiff_str); /// will disable and invalidate Exif data
 	fclose($Tiff_file);
 
+//	printf("\ - Tiff_str\n");  hexdump($Tiff_str);
+	
+	
+	
 	$dir_entries_exif=array();
 	$exif_head_length = count($exif_head);
 	foreach ($xml_exif->Image->children()   as $entry) addDirEntry($entry, $dir_entries_exif, $exif_head_length);
