@@ -17,117 +17,117 @@
     -->
 <Exif>
  <Image>
-   <ImageDescription tag="0x010e" format="ASCII" count="65" seq="16" dlen="64">
-<!--     <value>Description 0x41 bytes long                                      </value>-->
-     <value>Description 0x40 bytes long</value>
-   </ImageDescription>
-   <Make tag="0x010f" format="ASCII" function="BRAND"/>
-   <Model    tag="0x0110" format="ASCII" function="MODEL"/>
-   <Software tag="0x0131" format="ASCII" function="SOFTWARE"/>
-   <DateTime tag="0x0132" format="ASCII" count="20"  seq="1" dlen="20">
-     <value>2001:06:21 12:00:00</value>
-   </DateTime>
-   <CameraSerialNumber tag="0xc62f" format="ASCII" function="SERIAL"/>
-   <ImageNumber  tag="0x9211" format="LONG" count="1"  seq="25" dlen="4"/>
-   <Orientation  tag="0x112"  format="SHORT" count="1"  seq="27" dlen="2"/>
-   <PageNumber   tag="0x129"  format="SHORT" count="2"  seq="28" dlen="2">
-   <value> 0 </value>
-   <value> 4 </value>
-   </PageNumber>
-   <ExifTag tag="0x8769" format="LONG" function="EXIFTAG"/>
-   <GPSTag tag="0x08825" format="LONG" function="GPSTAG"/>
-<!-- Tiff only -->
-   <NewSubfileType            tag="0x00fe" format="LONG" count="1"           dlen="4" mode="T">
+   <NewSubfileType     tag="0x00fe" format="LONG" count="1"           dlen="4" mode="T">
    		<value> 0 </value><!-- (not reduced, not multipage, not mask) -->
    </NewSubfileType>
-   <ImageWidth                tag="0x0100" format="LONG"  count="1" seq="30" dlen="4" mode="T"/>
-   <ImageLength               tag="0x0101" format="LONG"  count="1" seq="31" dlen="4" mode="T"/>
-   <BitsPerSample             tag="0x0102" format="SHORT" count="1" seq="32" dlen="2" mode="T"/>
+   <ImageWidth         tag="0x0100" format="LONG"  count="1" seq="30" dlen="4" mode="T"/>
+   <ImageLength        tag="0x0101" format="LONG"  count="1" seq="31" dlen="4" mode="T"/>
+   <BitsPerSample      tag="0x0102" format="SHORT" count="1" seq="32" dlen="2" mode="T"/>
    <PhotometricInterpretation tag="0x0106" format="SHORT" count="1"          dlen="2" mode="T">
    		<value> 1 </value><!-- black is zero -->
    </PhotometricInterpretation>
-<!-- <StripOffsets              tag="0x0111" format="LONG" function="STRIPOFFSETS" mode="T"/>--> <!-- offset to actual image -->
-   <StripOffsets              tag="0x0111" format="LONG"  count="1"          dlen="4" mode="T"/> <!-- offset to actual image -->
-   <SamplesPerPixel           tag="0x0115" format="SHORT" count="1" seq="33" dlen="2" mode="T">
+   <ImageDescription tag="0x010e" format="ASCII" count="65" seq="16" dlen="64">
+     <value>Description 0x40 bytes long</value>
+   </ImageDescription>
+   <Make               tag="0x010f" format="ASCII" function="BRAND"/>
+   <Model              tag="0x0110" format="ASCII" function="MODEL"/>
+   <StripOffsets       tag="0x0111" format="LONG"  count="1"          dlen="4" mode="T"/> <!-- offset to actual image -->
+   <Orientation        tag="0x0112"  format="SHORT" count="1"  seq="27" dlen="2"/>
+   <SamplesPerPixel    tag="0x0115" format="SHORT" count="1" seq="33" dlen="2" mode="T">
    		<value> 1 </value><!-- One color per pixel, will be overwritten by driver -->
    </SamplesPerPixel>
-   <RowsPerStrip              tag="0x0116" format="SHORT" count="1" seq="34" dlen="2" mode="T"/>
-   <StripByteCounts           tag="0x0117" format="LONG"  count="1" seq="35" dlen="4" mode="T"/>
+   <RowsPerStrip       tag="0x0116" format="SHORT" count="1" seq="34" dlen="2" mode="T"/>
+   <StripByteCounts    tag="0x0117" format="LONG"  count="1" seq="35" dlen="4" mode="T"/>
+   <PageNumber         tag="0x0129"  format="SHORT" count="2"  seq="28" dlen="2">
+      <value> 0 </value>
+      <value> 4 </value>
+   </PageNumber>
+   <Software           tag="0x0131" format="ASCII" function="SOFTWARE"/>
+   <DateTime           tag="0x0132" format="ASCII" count="20"  seq="1" dlen="20">
+     <value>2001:06:21 12:00:00</value>
+   </DateTime>
+   <ExifTag            tag="0x8769" format="LONG" function="EXIFTAG"/>
+   <GPSTag             tag="0x8825" format="LONG" function="GPSTAG"/>
+   <ImageNumber        tag="0x9211" format="LONG" count="1"  seq="25" dlen="4"/>
+   <CameraSerialNumber tag="0xc62f" format="ASCII" function="SERIAL"/>
+<!-- <StripOffsets              tag="0x0111" format="LONG" function="STRIPOFFSETS" mode="T"/>--> <!-- offset to actual image -->
  </Image>
  <Photo>
-   <ExposureTime tag="0x829a" format="RATIONAL" seq="3" dlen="4">
+   <ExposureTime       tag="0x829a" format="RATIONAL" seq="3" dlen="4">
      <nominator>1</nominator> <denominator>1000000</denominator>
    </ExposureTime>
-   <DateTimeOriginal tag="0x9003" format="ASCII" count="20" seq="5" dlen="20">
+   <DateTimeOriginal   tag="0x9003" format="ASCII" count="20" seq="5" dlen="20">
      <value>2001:06:21 12:00:00</value>
    </DateTimeOriginal>
+   <MakerNote          tag="0x927c" format="LONG" count="16"  seq="26" dlen="64"/>
    <SubSecTimeOriginal tag="0x9291" format="ASCII" count="7" seq="6" dlen="7">
      <value>0      </value>
    </SubSecTimeOriginal>
-   <MakerNote  tag="0x927c" format="LONG" count="16"  seq="26" dlen="64"/>
  </Photo>
  <GPSInfo>
-   <GPSVersionID tag="0x0" format= "BYTE" count="4">
+   <GPSVersionID       tag="0x0" format= "BYTE" count="4">
      <value>2</value>
      <value>2</value>
      <value>0</value>
      <value>0</value>
    </GPSVersionID>
-   <GPSLatitudeRef tag="0x1" format= "ASCII" count="2"  seq="7" dlen="1">
+   <GPSLatitudeRef     tag="0x1" format= "ASCII" count="2"  seq="7" dlen="1">
      <value>N</value>
    </GPSLatitudeRef>
-   <GPSLatitude tag="0x2" format= "RATIONAL" count="3"  seq="8" dlen="16">
+   <GPSLatitude        tag="0x2" format= "RATIONAL" count="3"  seq="8" dlen="16">
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
    </GPSLatitude>
-   <GPSLongitudeRef tag="0x3" format= "ASCII" count="2"  seq="9" dlen="1">
+   <GPSLongitudeRef    tag="0x3" format= "ASCII" count="2"  seq="9" dlen="1">
      <value>W</value>
    </GPSLongitudeRef>
-   <GPSLongitude tag="0x4" format= "RATIONAL" count="3"   seq="10" dlen="16">
+   <GPSLongitude       tag="0x4" format= "RATIONAL" count="3"   seq="10" dlen="16">
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
    </GPSLongitude>
-   <GPSAltitudeRef tag="0x5" format= "BYTE" count="1" seq="11" dlen="1">
+   <GPSAltitudeRef     tag="0x5" format= "BYTE" count="1" seq="11" dlen="1">
      <value>0x0</value>
    </GPSAltitudeRef>
-   <GPSAltitude tag="0x6" format= "RATIONAL" count="1" seq="12" dlen="8">
+   <GPSAltitude        tag="0x6" format= "RATIONAL" count="1" seq="12" dlen="8">
      <nominator>0</nominator><denominator>1</denominator>
    </GPSAltitude>
-   <GPSTimeStamp tag="0x7" format= "RATIONAL" count="3" seq="13" dlen="24">
+   <GPSTimeStamp       tag="0x7" format= "RATIONAL" count="3" seq="13" dlen="24">
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
    </GPSTimeStamp>
-   <GPSMeasureMode tag="0xa" format= "ASCII" count="2"  seq="15" dlen="1">
+   <GPSMeasureMode     tag="0xa" format= "ASCII" count="2"  seq="15" dlen="1">
      <value>0</value>
    </GPSMeasureMode>
-   <GPSDateStamp tag="0x1d" format= "ASCII" count="11" seq="14" dlen="11">
-     <value>0000:00:00</value> 
-   </GPSDateStamp>
 <!--Compass fileds - hack: using dest lat/long  as no roll/pitch fields are available in Exif-->
    <CompassDirectionRef tag="0x10" format= "ASCII" count="2">
      <value>M</value>
    </CompassDirectionRef>
-   <CompassDirection tag="0x11" format= "RATIONAL" count="1" seq="20" dlen="8">
+   <CompassDirection    tag="0x11" format= "RATIONAL" count="1" seq="20" dlen="8">
      <nominator>0</nominator><denominator>10</denominator>
    </CompassDirection>
-   <CompassPitchRef tag="0x13" format= "ASCII" count="2"  seq="21" dlen="1">
+   <CompassPitchRef     tag="0x13" format= "ASCII" count="2"  seq="21" dlen="1">
      <value>N</value>
    </CompassPitchRef>
-   <CompassPitch tag="0x14" format= "RATIONAL" count="3"  seq="22" dlen="8">
+   <CompassPitch        tag="0x14" format= "RATIONAL" count="3"  seq="22" dlen="8">
      <nominator>0</nominator><denominator>10</denominator>
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
    </CompassPitch>
-   <CompassRollRef tag="0x15" format= "ASCII" count="2"  seq="23" dlen="1">
+   <CompassRollRef      tag="0x15" format= "ASCII" count="2"  seq="23" dlen="1">
      <value>E</value>
    </CompassRollRef>
-   <CompassRoll tag="0x16" format= "RATIONAL" count="3"  seq="24" dlen="8">
+   <CompassRoll         tag="0x16" format= "RATIONAL" count="3"  seq="24" dlen="8">
      <nominator>0</nominator><denominator>10</denominator>
      <nominator>0</nominator><denominator>1</denominator>
      <nominator>0</nominator><denominator>1</denominator>
    </CompassRoll>
+   
+   <GPSDateStamp       tag="0x1d" format= "ASCII" count="11" seq="14" dlen="11">
+     <value>0000:00:00</value> 
+   </GPSDateStamp>
+   
  </GPSInfo>
 </Exif>
