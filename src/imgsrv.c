@@ -79,6 +79,10 @@
  * The file name of Exif buffer
  * @var file_set::exif_dev_fd
  * The file descriptor of Exif buffer
+ * @var file_set::tiff_dev_name
+ * The file name of Tiff buffer
+ * @var file_set::tiff_dev_fd
+ * The file descriptor of Tiff buffer
  * @var file_set::exifmeta_dev_name
  * The file name of Exif meta buffer
  * @var file_set::exifmeta_dev_fd
@@ -92,6 +96,8 @@ struct file_set {
 	int            jphead_fd;
 	const char     *exif_dev_name;
 	int            exif_dev_fd;
+	const char     *tiff_dev_name;
+	int            tiff_dev_fd;
 	const char     *exifmeta_dev_name;
 	int            exifmeta_dev_fd;
     const char     *framepars_dev_name;
@@ -123,6 +129,11 @@ static const char *exif_dev_names[SENSOR_PORTS] = {
         DEV393_PATH(DEV393_EXIF1),
         DEV393_PATH(DEV393_EXIF2),
         DEV393_PATH(DEV393_EXIF3)};
+static const char *tiff_dev_names[SENSOR_PORTS] = {
+        DEV393_PATH(DEV393_TIFF0),
+        DEV393_PATH(DEV393_TIFF1),
+        DEV393_PATH(DEV393_TIFF2),
+        DEV393_PATH(DEV393_TIFF3)};
 static const char *exifmeta_dev_names[SENSOR_PORTS] = {
         DEV393_PATH(DEV393_EXIF_META0),
         DEV393_PATH(DEV393_EXIF_META1),
@@ -281,7 +292,7 @@ int printExifXML(int exif_page, struct file_set *fset)
 	const char CameraSerialNumber[] = "FFFFFFFFFFFF";
 	val[255] = '\0';
 //	int fd_exif = open(fset->exif_dev_name, O_RDONLY);
-	if (fset->exif_dev_fd <0)
+	if (fset->exif_dev_fd < 0)
 	    fset->exif_dev_fd = open(fset->exif_dev_name, O_RDONLY);
 	if (fset->exif_dev_fd < 0) {
 		printf("<error>\"Opening %s\"</error>\n", fset->exif_dev_name);
@@ -960,17 +971,16 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	int timestamp_start;
 
 	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR);     //get the current read pointer
-//    jpeg_start = lseek(fset->circbuf_fd, 1, SEEK_CUR)-1;   //just for testing, until rebuilt/rebooted kernel
-
-
 	D(fprintf(stderr, "jpeg_start (long) = 0x%x\n", jpeg_start));
+
+#if 0
 	if (fset->jphead_fd<0)
 	    fset->jphead_fd = open(fset->jphead_fn, O_RDWR);
 	if (fset->jphead_fd < 0) { // check control OK
 		fprintf(stderr, "Error opening %s\n", fset->jphead_fn);
 		return -1;
 	}
-//	fset->jphead_fd = fd_head;
+
 	lseek(fset->jphead_fd, jpeg_start + 1, SEEK_END);              // create JPEG header, find out it's size
 	head_size = lseek(fset->jphead_fd, 0, SEEK_END);
 	if (head_size > JPEG_HEADER_MAXSIZE) {
@@ -979,6 +989,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		fset->jphead_fd = -1;
 		return -2;
 	}
+#endif
 	/* find total buffer length (it is in defines, actually in c313a.h */
 	buff_size = lseek(fset->circbuf_fd, 0, SEEK_END); // it is supposed to be open?
 	/* restore file poinetr after lseek-ing the end */
@@ -1010,12 +1021,45 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		return -4;
 	}
 
+	if (color_mode == COLORMODE_RAW) {
+		head_size = 0;
+	} else { // some compressed mode
+		if (fset->jphead_fd<0)
+			fset->jphead_fd = open(fset->jphead_fn, O_RDWR);
+		if (fset->jphead_fd < 0) { // check control OK
+			fprintf(stderr, "Error opening %s\n", fset->jphead_fn);
+			return -1;
+		}
+		lseek(fset->jphead_fd, jpeg_start + 1, SEEK_END);              // create JPEG header, find out it's size
+		head_size = lseek(fset->jphead_fd, 0, SEEK_END);
+		if (head_size > JPEG_HEADER_MAXSIZE) {
+			fprintf(stderr, "%s:%d: Too big JPEG header (%d > %d)", __FILE__, __LINE__, head_size, JPEG_HEADER_MAXSIZE );
+			close(fset->jphead_fd);
+			fset->jphead_fd = -1;
+			return -2;
+		}
+	}
+
     // Copy timestamp (goes after the image data)
     timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; // magic shift - should index first byte of the time stamp
     if (timestamp_start >= buff_size) timestamp_start-=buff_size;
     memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
-
-	if (use_Exif) {
+    if (color_mode == COLORMODE_RAW) {
+		if (fset->tiff_dev_fd <0)
+		    fset->tiff_dev_fd = open(fset->tiff_dev_name, O_RDONLY);
+		if (fset->tiff_dev_fd < 0) {                                 // check control OK
+			fprintf(stderr, "Error opening %s\n", fset->tiff_dev_name);
+			close(fset->jphead_fd);
+			fset->jphead_fd = -1;
+			return -5;
+		}
+		exifDataSize = lseek(fset->tiff_dev_fd, 1, SEEK_END);  // at the beginning of page 1 - position == page length
+		if (exifDataSize < 0) exifDataSize = 0;                // error from lseek;
+		if (!exifDataSize){
+		    close(fset->tiff_dev_fd);
+		    fset->tiff_dev_fd = -1;
+		}
+    } else if (use_Exif) {
 		D(fprintf(stderr,"frame_params.meta_index=0x%x\n",(int) frame_params.meta_index));
 		// read Exif to buffer:
 		if (fset->exif_dev_fd <0)
@@ -1041,13 +1085,13 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 	// Get metadata, update Exif and JFIF headers if ep and ed pointers are non-zero (NULL will generate files with JFIF-only headers)
 	// Now we always malloc buffer, before - only for bimg, using fixed-size header buffer - was it faster?
 
-	jpeg_full_size = jpeg_len + head_size + 2 + exifDataSize;
+	jpeg_full_size = jpeg_len + head_size + exifDataSize + ((head_size > 0) ? 2 : 0);
 
 //	fprintf(stderr, "jpeg_len = 0x%x, head_size = 0x%x, exifDataSize = 0x%x, jpeg_full_size = 0x%x\n",
 //			jpeg_len, head_size, exifDataSize, jpeg_full_size);
 
-	if (bufferImageData) jpeg_this_size = jpeg_full_size;  // header+frame
-	else jpeg_this_size = head_size + exifDataSize;        // only header
+	if (bufferImageData) jpeg_this_size = jpeg_full_size;             // header+frame
+	else                 jpeg_this_size = head_size + exifDataSize;   // only header
 	jpeg_copy = malloc(jpeg_this_size);
 	if (!jpeg_copy) {
 		syslog(LOG_ERR, "%s:%d malloc (%d) failed", __FILE__, __LINE__, jpeg_this_size);
@@ -1064,20 +1108,31 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		}
 	}
 
-	lseek(fset->jphead_fd, 0, 0);
-	read(fset->jphead_fd, &jpeg_copy[exifDataSize], head_size);
-	close(fset->jphead_fd);
-	fset->jphead_fd = -1;
-	if (exifDataSize > 0) {                                // insert Exif
-		memcpy(jpeg_copy, &jpeg_copy[exifDataSize], 2);    // copy first 2 bytes of the JFIF header before Exif
-		lseek(fset->exif_dev_fd,frame_params.meta_index,SEEK_END);   // select meta page to use (matching frame)
-		read(fset->exif_dev_fd, &jpeg_copy[2], exifDataSize);        // Insert Exif itself
-		close(fset->exif_dev_fd);
-		fset->exif_dev_fd = -1;
+	if (color_mode == COLORMODE_RAW) {
+		lseek(fset->tiff_dev_fd, frame_params.meta_index,SEEK_END);   // select meta page to use (matching frame)
+		read (fset->tiff_dev_fd, &jpeg_copy[0], exifDataSize);        // Read Tiff header
+		close(fset->tiff_dev_fd);
+		fset->tiff_dev_fd = -1;
+	} else {
+		lseek(fset->jphead_fd, 0, 0);
+		read(fset->jphead_fd, &jpeg_copy[exifDataSize], head_size);
+		close(fset->jphead_fd);
+		fset->jphead_fd = -1;
+		if (exifDataSize > 0) {                                // insert Exif
+			memcpy(jpeg_copy, &jpeg_copy[exifDataSize], 2);    // copy first 2 bytes of the JFIF header before Exif
+			lseek(fset->exif_dev_fd,frame_params.meta_index,SEEK_END);   // select meta page to use (matching frame)
+			read(fset->exif_dev_fd, &jpeg_copy[2], exifDataSize);        // Insert Exif itself
+			close(fset->exif_dev_fd);
+			fset->exif_dev_fd = -1;
+		}
 	}
 	switch (color_mode) {
 	//   case COLORMODE_MONO6:    //! monochrome, (4:2:0),
 	//   case COLORMODE_COLOR:    //! color, 4:2:0, 18x18(old)
+	case COLORMODE_RAW:     // jp4, original (4:2:0)
+		mime_type = "tiff";
+		extension = "tiff";
+		break;
 	case COLORMODE_JP46:    // jp4, original (4:2:0)
 	case COLORMODE_JP46DC:  // jp4, dc -improved (4:2:0)
 		mime_type = "jp46";
@@ -1114,6 +1169,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
    #define COLORMODE_JP4DIFF2  9 // jp4, 4 blocks, differential, divide differences by 2: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (G2-G1)/2
    #define COLORMODE_JP4HDR2  10 // jp4, 4 blocks, differential HDR: red := (R-G1)/2, blue:=(B-G1)/2, green=G1, green2 (high gain)=G2),
    #define COLORMODE_MONO4    14 // monochrome, 4 blocks (but still with 2x2 macroblocks)
+   #define COLORMODE_RAW      15 // raw 8/16-bit data in scanline order, bypassing compressor
 	 */
 	printf("Content-Type: image/%s\r\n", mime_type);
     if (saveImage) {
@@ -1144,7 +1200,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 		end_time = lseek(fset->circbuf_fd, LSEEK_CIRC_UTIME, SEEK_END);
 		D(fprintf(stderr, "memcpy time = %lu\n", end_time - start_time));
 #endif
-		memcpy(&jpeg_copy[jpeg_len + head_size + exifDataSize], trailer, 2);
+		if (color_mode != COLORMODE_RAW) memcpy(&jpeg_copy[jpeg_len + head_size + exifDataSize], trailer, 2); // Only for JPEG flavors
 		printf("Content-Length: %d\r\n", jpeg_full_size);
 		printf("\r\n");
 		sendBuffer(jpeg_copy, jpeg_full_size);
@@ -1164,7 +1220,7 @@ int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int sav
 			sendBuffer((void*)&ccam_dma_buf[jpeg_start >> 2], jpeg_len);
             D1(fprintf(stderr, "One part (non-buffered), jpeg_start (long) = 0x%x, buff_size = 0x%x\n", jpeg_start, buff_size));
 		}
-		sendBuffer(trailer, 2);
+		if (color_mode != COLORMODE_RAW) sendBuffer(trailer, 2); // Only for JPEG flavors
 	}
 	free(jpeg_copy);
 	return 0;
@@ -1513,6 +1569,8 @@ void init_file_set(struct file_set *fset, int fset_sz)
 		fset[i].jphead_fd = -1;
 		fset[i].exif_dev_name = exif_dev_names[i];
 		fset[i].exif_dev_fd = -1;
+		fset[i].tiff_dev_name = tiff_dev_names[i];
+		fset[i].tiff_dev_fd = -1;
 		fset[i].exifmeta_dev_name = exifmeta_dev_names[i];
 		fset[i].exifmeta_dev_fd = -1;
         fset[i].framepars_dev_name = framepars_dev_names[i];
