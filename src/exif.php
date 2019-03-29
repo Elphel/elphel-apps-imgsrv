@@ -645,7 +645,6 @@ function finish_ifd(&$exif_data, &$ifd_pointer) { // we do not have additional I
 function addDirEntry0($ifd_entry, &$dir_sequence, &$dir_entries, $lh) {
 //	global $dir_sequence,$dir_entries,$exif_head;
 //	$lh=count($exif_head);
-
 	$attrs = $ifd_entry->attributes();
 	//  var_dump($attrs);
 	//  if  (array_key_exists  ( "seq"  , $attrs  )) {
@@ -830,7 +829,10 @@ echo "\n";
 	$ifd_entry->addChild ("ltag",$ltag );
 	if (count($ifd_data) <=4) {
 		$ifd_entry->addChild ('value_offest',$ifd_pointer);
-		$ifd_data= array_pad($ifd_data,-4,0); // add leading zeroes if <4 bytes
+		
+//		$ifd_data= array_pad($ifd_data,-4,0); // add leading zeroes if <4 bytes
+		$ifd_data= array_pad($ifd_data, 4,0); // add trailing zeroes if <4 bytes (for shorts)
+		
 		for ($i=0;$i<4;$i++)   $exif_data[$ifd_pointer++]=$ifd_data[$i];
 	} else { //pointer, not data
 		$ifd_entry->addChild ('value_offest',$data_pointer);
