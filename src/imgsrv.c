@@ -162,8 +162,11 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"              i.e. mimg4 - skip 3 frames for each frame output (1/4 fps) \n"
 		"bmimg[n] -    same as above, buffered\n"
 		"pointers -    send XML-formatted data about frames available in the camera circular buffer)\n"
-		"frame -       return current frame number as plain text\n"
-		"wframe -      wait for the next frame sync, return current frame number as plain text\n\n"
+		"meta -        send XML-formatted data frame metada\n"
+		"frame -       return current compressor frame number as plain text\n"
+		"sframe -      return current sensor frame number as plain text\n\n"
+		"wframe -      wait for the next frame sync, return current sensor frame number as plain text\n\n"
+		"xframe -      return current compressor and sensor frame numbers as XML\n"
 		"Any of the 7 commands above can appear only once in the URL string, the second instance will be ignored. If none of the 5\n"
 		"are present in the URL 1x1 pixel gif will be returned to the client after executing the URL command.\n\n"
 		"torp -   set frame pointer to global read pointer, maintained by the camera driver. If frame at that pointer\n"
@@ -197,6 +200,7 @@ void sendBuffer(void * buffer, int len);
 void listener_loop(struct file_set *fset);
 void errorMsgXML(char * msg);
 int  framePointersXML(struct file_set *fset);
+int  frameNumbersXML(struct file_set *fset);
 int  metaXML(struct file_set *fset, int mode); // mode: 0 - new (send headers), 1 - continue, 2 - finish
 int  printExifXML(int exif_page, struct file_set *fset);
 int  out1x1gif(void);
@@ -754,8 +758,11 @@ int framePointersXML(struct file_set *fset)
 {
 //	const char ctlFileName[] = "/dev/frameparsall";
 //	int fd_fparmsall;
-	// very rarely exceeds 512
-	char s[528]; // 512 // 341;
+	// very rarely exceeds 512 - now it does !!!
+// when imgsrv is launched from the command line (imgsrv -p 2323) it outputs:
+//	*** buffer overflow detected ***: imgsrv terminated
+//	char s[528]; // 512 // 341;
+	char s[600]; // 512 // 341;
 	int p, wp, rp;
 	int nf = 0;
 	int nfl = 0;
@@ -895,6 +902,108 @@ int framePointersXML(struct file_set *fset)
 	D(fprintf(stderr, ">%s< [%d bytes]\n", s, strlen(s)));
 	return 0;
 }
+
+int frameNumbersXML(struct file_set *fset)
+{
+	// very rarely exceeds 512
+	char s[528]; // 512 // 341;// VERIFY size!)
+	int p; //, wp, rp;
+	int nf = 0;
+	int nfl = 0;
+	int frame_number, compressed_frame_number;
+	int frame16, sensor_state, compressor_state;
+	char *cp_sensor_state, *cp_compressor_state;
+	//Need to mmap just one port
+    struct framepars_all_t   *frameParsAll;
+    struct framepars_t       *framePars;
+    unsigned long            *globalPars;
+
+//	int fd_circ = fset->circbuf_fd;
+//    fprintf(stderr, "%s:%d:%s: Starting\n", __FILE__, __LINE__, __FUNCTION__);
+    if (fset->framepars_dev_fd <0)
+        fset->framepars_dev_fd = open(fset->framepars_dev_name, O_RDWR);
+	if (fset->framepars_dev_fd < 0) { // check control OK
+		printf("Error opening %s\n", fset->framepars_dev_name);
+		fprintf(stderr, "%s:%d:%s: Error opening %s\n", __FILE__, __LINE__, __FUNCTION__, fset->framepars_dev_name);
+		fset->framepars_dev_fd = -1;
+		return -1;
+	}
+    if (fset->circbuf_fd <0) {
+        fset->circbuf_fd = open(fset->cirbuf_fn, O_RDWR);
+    }
+    if (fset->circbuf_fd <0) {
+        printf("Error opening %s\n", fset->cirbuf_fn);
+        fprintf(stderr, "%s:%d:%s: Error opening %s\n", __FILE__, __LINE__, __FUNCTION__, fset->cirbuf_fn);
+    }
+	// now try to mmap
+	frameParsAll = (struct framepars_all_t*) mmap(0, sizeof(struct framepars_all_t), PROT_READ, MAP_SHARED, fset->framepars_dev_fd, 0);
+	if ((int)frameParsAll == -1) {
+		frameParsAll = NULL;
+		printf("Error in mmap /dev/frameparsall");
+		fprintf(stderr, "%s:%d:%s: Error in mmap in %s\n", __FILE__, __LINE__, __FUNCTION__, fset->framepars_dev_name);
+		close(fset->framepars_dev_fd);
+		fset->framepars_dev_fd = -1;
+		return -1;
+	}
+    framePars=frameParsAll->framePars;
+    globalPars=frameParsAll->globalPars;
+
+//->port_num
+	// Read current sensor state - defined in c313a.h
+	frame_number =            lseek(fset->framepars_dev_fd, 0, SEEK_CUR );
+	compressed_frame_number = lseek(fset->circbuf_fd, LSEEK_CIRC_GETFRAME, SEEK_END );
+
+
+	// Read current sensor state - defined in c313a.h
+	frame16 = frame_number & PARS_FRAMES_MASK;
+	sensor_state = framePars[frame16].pars[P_SENSOR_RUN];
+	compressor_state = framePars[frame16].pars[P_COMPRESSOR_RUN];
+	cp_sensor_state =     (sensor_state == 0) ?
+			"SENSOR_RUN_STOP" :
+			((sensor_state == 1) ?
+					"SENSOR_RUN_SINGLE" :
+					((sensor_state == 2) ? "SENSOR_RUN_CONT" : "UNKNOWN"));
+	cp_compressor_state = (compressor_state == 0) ?
+			"COMPRESSOR_RUN_STOP" :
+			((compressor_state == 1) ?
+					"COMPRESSOR_RUN_SINGLE" :
+					((compressor_state == 2) ? "COMPRESSOR_RUN_CONT" : "UNKNOWN"));
+
+
+
+	sprintf(s, "<?xml version=\"1.0\"?>\n" \
+			"<frames>\n" \
+			"  <frame>%d</frame>\n"	\
+            "  <frameHex>0x%x</frameHex>\n" \
+            "  <compressedFrame>%d</compressedFrame>\n" \
+            "  <compressedFrameHex>0x%x</compressedFrameHex>\n" \
+			"  <sensor_state>\"%s\"</sensor_state>\n" \
+			"  <compressor_state>\"%s\"</compressor_state>\n" \
+			"</frames>\n",
+			frame_number,
+            frame_number,
+			compressed_frame_number,
+            compressed_frame_number,
+			cp_sensor_state,
+			cp_compressor_state);
+
+	printf("HTTP/1.0 200 OK\r\n");
+	printf("Server: Elphel Imgsrv\r\n");
+	printf("Access-Control-Allow-Origin: *\r\n");
+	printf("Access-Control-Expose-Headers: Content-Disposition\r\n");
+	printf("Content-Length: %d\r\n", strlen(s));
+	printf("Content-Type: text/xml\r\n");
+	printf("Pragma: no-cache\r\n");
+	printf("\r\n");
+	printf("%s",s);
+
+	munmap(frameParsAll, sizeof(struct framepars_all_t));
+	close(fset->framepars_dev_fd);
+    fset->framepars_dev_fd = -1;
+	D(fprintf(stderr, ">%s< [%d bytes]\n", s, strlen(s)));
+	return 0;
+}
+
 
 /**
  * @brief Send 1x1 pixel GIF file as indication of an error
@@ -1323,7 +1432,7 @@ void listener_loop(struct file_set *fset)
 				_exit(0);
 			}
 			// Process 'frame' and 'wframe' commands - they do not need circbuf (now they do!)
-			if ((strncmp(cp, "frame", 5) == 0) || (strncmp(cp, "wframe", 6) == 0) || (strncmp(cp, "sframe", 6) == 0)) {
+			if ((strncmp(cp, "frame", 5) == 0) || (strncmp(cp, "wframe", 6) == 0) || (strncmp(cp, "sframe", 6) == 0)	) {
 				if (strncmp(cp, "wframe", 6) == 0) waitFrameSync(fset);
 				printf("HTTP/1.0 200 OK\r\n");
 				printf("Server: Elphel Imgsrv\r\n");
@@ -1339,6 +1448,25 @@ void listener_loop(struct file_set *fset)
 				fflush(stdout);
 				_exit(0);
 			}
+			/*
+			if ((strncmp(cp, "xframe", 6) == 0) || (strncmp(cp, "wxframe", 7) == 0)) {
+				if (strncmp(cp, "wxframe", 7) == 0) waitFrameSync(fset);
+				printf("HTTP/1.0 200 OK\r\n");
+				printf("Server: Elphel Imgsrv\r\n");
+				printf("Access-Control-Allow-Origin: *\r\n");
+				printf("Access-Control-Expose-Headers: Content-Disposition\r\n");
+				printf("Content-Type: text/xml\r\n");
+				printf("Pragma: no-cache\r\n");
+				printf("\r\n");
+				printf("<?xml version=\"1.0\"?>\n" \
+						"<frames>\n");
+				printf("<sensorFrame>%ld</sensorFrame>\n",getCurrentFrameNumberSensor(fset));
+				printf("<compressorFrame>%ld</compressorFrame>\n",getCurrentFrameNumberCompressor(fset));
+				printf ("</frames>\n");
+				fflush(stdout);
+				_exit(0);
+			}
+			*/
 			// now process the commands one at a time, but first - open the circbuf file and setup the pointer
 			if (fset->circbuf_fd<0)
 			    fset->circbuf_fd = open(fset->cirbuf_fn, O_RDWR);
@@ -1441,6 +1569,11 @@ void listener_loop(struct file_set *fset)
 				} else if (strcmp(cp1, "pointers") == 0) {
 					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
 					framePointersXML(fset);                                 // will restore file pointer after itself
+					sent2socket = 3;
+					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+				} else if (strcmp(cp1, "xframe") == 0) {
+					if (sent2socket > 0) break;                             // image/xmldata was already sent to socket, ignore
+					frameNumbersXML(fset);
 					sent2socket = 3;
 					fflush(stdout);                                         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
 				} else if (strcmp(cp1, "meta") == 0) {
