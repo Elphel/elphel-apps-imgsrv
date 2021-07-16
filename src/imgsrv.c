@@ -197,15 +197,31 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"         camera should be set in triggered mode (TRIG=4), internal (TRIG_CONDITION=0).\n"
 		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.\n"
         "timestamp_name - format file name as <seconds>_<useconds>_<channel>.<ext>\n"
-		"bchn[n]- base channel = n, <channel> = n + port number (0-3) - for unique naming of multicamera systems."
+		"bchn[n]- base channel = n, <channel> = n + port number (0-3) - for unique naming of multicamera systems.\n"
+		"\n"
+        "tiff_*   commands to preview 16-bit TIFF files as 8-bit indexed BMP ones (always buffered), they should be inserted before /bimg)\n"
+        "tiff_convert - enable conversion, replace TIFF with BMP\n"
+        "tiff_palette=[value] - select palette: 0 - white hot, 1 - black hot, 2 - colored ('fire')\n"
+        "tiff_telem=[value] - remove telemetry line(s): >0 top lines, <0 - bottom lines\n"
+        "tiff_mn=[value] - minimal value (all below mapped to output index 0)\n"
+        "tiff_mx=[value] - maximal value (all above mapped to output index 255)."
+		"\n"
+		"Generating statistics for TIFF-16 uncompressed images, providing minimal, maximal, mean and several percentiles as XML file.\n"
+		"In this mode tiff_mn and tiff_mx are used for histogram generation (if uncertain may use 0 and 65535), tiff_telem - telemetry.\n"
+		"tiff_bin=<power-of-2> specifies bin size as a power of 2: 0 - bin size == 1, 1 - bin size is 2, 2 -> 4, etc.\n"
+		"tiff_stats is the command itself, it should be after the required parameters: tiff_mn=<...>/tiff_mx=<...>/tiff_telem=<...>/tiff_bin=<...>/tiff_stats.\n"
+		"tiff_auto=[value] may preceed tiff_convert and calculate and set min/max for conversion using tiff_stat internally.\n"
+		"          Value 0 - use bsolute min/max values, 1 - 0.1% to 99.9%, 2 - 0.5% to 99.5%, 3 - 1% to 99%, 4 - 5% to 95% and >=5 - 10% to 90%."
 		;
-
 
 // path to file containing serial number
 static const char path_to_serial[] = "/sys/devices/soc0/elphel393-init/serial";
 
 int  sendImage(struct file_set *fset, int bufferImageData, int use_Exif, int saveImage,
 		       int tiff_convert, int tiff_mn, int tiff_mx, int tiff_palette, int tiff_telem);
+int getBmpHeader(uint8_t * buffer, int width, int height, int palette, int telem);
+uint8_t * convertImage (uint8_t *dst, uint16_t *src, int *offs, int len, int mn, int mx,
+		               int width, int height, int telem);
 void sendBuffer(void * buffer, int len);
 void listener_loop(struct file_set *fset);
 void errorMsgXML(char * msg);
@@ -913,6 +929,273 @@ int framePointersXML(struct file_set *fset)
 	return 0;
 }
 
+int TiffStats(struct file_set * fset,
+		      int    tiff_auto,   // -1 - return XML, >=0 set tiff_min and tiff_max (if non-NULL)
+			  int *  tiff_min,
+			  int *  tiff_max,
+			  int    bin_shift,   // binsize = 1 << bin_shift
+			  int    hist_size,   // size of the histogram = ( 1 << size_shift)
+			  int    hist_min,   // subtract from value before binning
+			  int    tiff_telem)
+{
+	int frameParamPointer = 0;
+	struct interframe_params_t frame_params;
+	int buff_size;
+	int jpeg_len;   // bytes
+	int jpeg_start; // bytes
+	int l, i, j;
+	int color_mode;
+	int timestamp_start;
+	int width;
+	int height;
+	int bin_size =  1 << bin_shift;
+	int hist16_size = sizeof(int) * hist_size;
+	int * hist16 = 0; //	memset((char*)&sock, 0, sizeof(sock));
+	int tiff_offs;
+
+	char *out_str; // 1024
+	char *out_strp;
+	char perc_name[64];
+	int out_size = 4096; // 15 percentiles - 827, should be sufficient to fit XML
+
+//	const float percentiles[] = {0.1,1.0,10,50.0,90.0,99.0,99.9};
+//	const int num_percentiles = sizeof(percentiles)/sizeof(float);
+	const char * spercentiles[] = {"0.1","0.5","1","5","10","20","30","40","50","60","70","80","90","95","99","99.5","99.9"};
+	const int num_percentiles = sizeof(spercentiles)/sizeof(char *);
+	float percentile_values[num_percentiles];
+	float mean;
+	int min_val = 0xffff;
+	int max_val = 0;
+	long long sum_val = 0;
+	int num_pix;
+	int ibin;
+	int iperc;
+	int prev_bin, this_bin;
+	float perc_val;
+#if ELPHEL_DEBUG_THIS
+	float perc_val0, perc_val1, perc_diff; // just debug
+#endif
+	if (tiff_auto > (num_percentiles/2)){ // 0 is for absolute min/max, <0 - for XML
+		tiff_auto = num_percentiles/2;
+	}
+	D(fprintf(stderr, "TiffStats(): tiff_auto=%d, tiff_min = %p, tiff_max = %p\n",tiff_auto,tiff_min,tiff_max));
+
+	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR);     //get the current read pointer
+
+	/* find total buffer length (it is in defines, actually in c313a.h */
+	buff_size = lseek(fset->circbuf_fd, 0, SEEK_END); // it is supposed to be open?
+	/* restore file poinetr after lseek-ing the end */
+	lseek(fset->circbuf_fd, jpeg_start, SEEK_SET);
+	D(fprintf(stderr, "position (longs) = 0x%x\n", (int)lseek(fset->circbuf_fd, 0, SEEK_CUR)));
+	/* now let's try mmap itself */
+	frameParamPointer = jpeg_start - sizeof(struct interframe_params_t) + 4;
+	if (frameParamPointer < 0)
+		frameParamPointer += buff_size;
+	memcpy(&frame_params, (unsigned long*)&ccam_dma_buf[frameParamPointer >> 2], sizeof(struct interframe_params_t) - 4);
+	jpeg_len = frame_params.frame_length;
+	color_mode = frame_params.color;
+	width = frame_params.width;
+	height = frame_params.height;
+	D(fprintf(stderr, "color_mode = 0x%x\n", color_mode));
+	if (color_mode == COLORMODE_RAW) { // should check bits too?
+		//		return -1; // provide meaningful errno?
+		//	}
+		if (frame_params.signffff != 0xffff) {
+			fprintf(stderr, "wrong signature signff = 0x%x \n", (int)frame_params.signffff);
+			for (i=0; i< sizeof(struct interframe_params_t)/4;i++){
+				fprintf(stderr, "%08lx ",ccam_dma_buf[(frameParamPointer >> 2) + i]);
+				if (!((i+1) & 0x7)){
+					fprintf(stderr, "\n ");
+				}
+			}
+			close(fset->jphead_fd);
+			fset->jphead_fd = -1;
+			return -4;
+		}
+		// Copy timestamp (goes after the image data)
+		timestamp_start=jpeg_start+((jpeg_len+CCAM_MMAP_META+3) & (~0x1f)) + 32 - CCAM_MMAP_META_SEC; // magic shift - should index first byte of the time stamp
+		if (timestamp_start >= buff_size) timestamp_start-=buff_size;
+		memcpy (&(frame_params.timestamp_sec), (unsigned long * ) &ccam_dma_buf[timestamp_start>>2],8);
+		D(fprintf(stderr, "TiffStats(): color_mode=0x%x, tiff_telem=%d, hist_size=%d, hist16_size=%d\n",color_mode, tiff_telem, hist_size, hist16_size));
+
+		// Allocate histogram array
+		if (tiff_auto != 0) { // tiff_auto==0 - only calculate min, max (and sum/average - not used)
+			hist16 = malloc(hist16_size);
+			if (!hist16) {
+				D(fprintf(stderr, "Malloc error allocating hist16 %d (0x%x) bytes\n",hist16_size, hist16_size));
+				syslog(LOG_ERR, "%s:%d malloc (%d) failed", __FILE__, __LINE__, hist16_size);
+				exit(1);
+			}
+			memset((char*)hist16, 0, hist16_size);
+		}
+		D(fprintf(stderr, "TiffStats(), sum_val=%ld\n",sum_val));
+
+		tiff_offs = 0;
+		num_pix = 0;
+		/* JPEG image data may be split in two segments (rolled over buffer end) - process both variants */
+		if ((jpeg_start + jpeg_len) > buff_size) { // two segments
+			D(fprintf(stderr, "Two-part image data, sum_val=%lld\n",sum_val));
+			// first part
+			num_pix += cumulHistImage (
+					(uint16_t *) &ccam_dma_buf[jpeg_start >> 2], // uint16_t * src,
+					&tiff_offs,                                  // int *      offs,
+					(buff_size - jpeg_start)/2,                  // int        len,
+					width,                                       // int        width,
+					height,                                      // int        height,
+					tiff_telem,                                  // int        telem);
+					bin_shift,                                   // int        bin_shift,
+					hist_size,                                   // int        hist_size,
+					hist_min,                                    // int        hist_min,
+					hist16,                                      // int *      hist16,
+					&sum_val,                                    // long long* sum_val,
+					&min_val,                                    // int *      mn,
+					&max_val);                                   // int *      mx
+
+			//		int min_val = 0xffff;
+			//		int max_val = 0;
+
+			// second part
+			l += buff_size - jpeg_start;
+			num_pix += cumulHistImage (
+					(uint16_t *)( &ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start)), // uint16_t * src,
+					&tiff_offs,                                  // int *      offs,
+					(jpeg_len - (buff_size - jpeg_start))/2,     // int        len,
+					width,                                       // int        width,
+					height,                                      // int        height,
+					tiff_telem,                                  // int        telem);
+					bin_shift,                                   // int        bin_shift,
+					hist_size,                                   // int        hist_size,
+					hist_min,                                    // int        hist_min,
+					hist16,                                      // int *      hist16
+					&sum_val,                                    // long long* sum_val,
+					&min_val,                                    // int *      mn,
+					&max_val);                                   // int *      mx
+			D(fprintf(stderr, "Two parts (buffered), jpeg_start (long) = 0x%x\n", jpeg_start));
+		} else { /* single segment */
+			D(fprintf(stderr, "One-part image data, l=0x%x, sum_val=%lld\n",l,sum_val));
+			num_pix += cumulHistImage (
+					(uint16_t *) &ccam_dma_buf[jpeg_start >> 2], // uint16_t * src,
+					&tiff_offs,                                  // int *      offs,
+					(jpeg_len)/2,                                // int        len,
+					width,                                       // int        width,
+					height,                                      // int        height,
+					tiff_telem,                                  // int        telem);
+					bin_shift,                                   // int        bin_shift,
+					hist_size,                                   // int        hist_size,
+					hist_min,                                    // int        hist_min,
+					hist16,                                      // int *      hist16
+					&sum_val,                                    // long long* sum_val,
+					&min_val,                                    // int *      mn,
+					&max_val);                                   // int *      mx
+			D(fprintf(stderr, "One part (buffered), jpeg_start (long) = 0x%x, buff_size = 0x%x\n", jpeg_start, buff_size));
+		}
+		D(fprintf(stderr, "TiffStats() - after cumulHistImage()\n")); // got here
+		// convert histogram to cumulative histogram
+		D(fprintf(stderr, "TiffStats(): num_pix = %d, min_val=%d, max_val=%d\n",num_pix, min_val, max_val));
+
+		if (tiff_auto == 0){ // absolute min/max
+			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
+			*tiff_min = min_val;
+			*tiff_max = max_val;
+			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
+			return 0; // no need to process more
+		}
+
+//		num_pix = hist16[hist_size - 1];
+		mean = 1.0* sum_val / num_pix;
+		D(fprintf(stderr, "TiffStats(): num_pix = %d, mean = %f, min_val=%d, max_val=%d\n",num_pix, mean, min_val, max_val));
+
+		// Allocate output string
+		out_str = malloc(out_size);
+		if (!out_str) {
+			D(fprintf(stderr, "Malloc error allocating hist16 %d (0x%x) bytes\n",out_size, out_size));
+			syslog(LOG_ERR, "%s:%d malloc (%d) failed", __FILE__, __LINE__, out_size);
+			free(hist16);
+			exit(1);
+		}
+		D(fprintf(stderr, "TiffStats(): malloc %d bytes OK\n",out_size));
+		ibin=0;
+		D(fprintf(stderr, "TiffStats(): hist_min=%d, bin_size=%d, hist_size=%d\n",hist_min, bin_size, hist_size));
+
+		// make histogram cumulative
+		for (i = 1; i < hist_size; i++){
+			hist16[i] += hist16[i-1];
+		}
+
+		for (i = 0; i < num_percentiles; i++){
+			iperc = num_pix * (0.01*strtod(spercentiles[i],NULL)); // should be ordered and <100%
+			D(fprintf(stderr, "TiffStats(): i=%d, iperc=%d\n",i, iperc));
+			if (iperc > num_pix) iperc = num_pix;
+			// find first bin with cumulative pixels >= iperc;
+			for (; hist16[ibin] < iperc; ibin++); // should always be (ibin < hist_size)
+			prev_bin = 0;
+			this_bin = hist16[ibin];
+			if (ibin > 0) prev_bin = hist16[ibin-1];
+
+			// linear interpolate float
+			perc_val =  ((iperc - prev_bin)* (1.0 / (this_bin - prev_bin)) + ibin - 0.5) * bin_size + hist_min ;
+#if ELPHEL_DEBUG_THIS
+			perc_val0 = (ibin - 1 + 0.5) * bin_size + hist_min ;
+			perc_val1 = (ibin     + 0.5) * bin_size + hist_min ;
+			perc_diff = ((iperc - prev_bin)* (1.0 / (this_bin - prev_bin))) * bin_size;
+			D(fprintf(stderr, "TiffStats(): perc_val0=%f, perc_val=%f, perc_val1=%f, perc_diff=%f\n",perc_val0,perc_val,perc_val1,perc_diff));
+#endif
+			D(fprintf(stderr, "TiffStats(): i=%d, iperc=%d, ibin=%d, bin_size=%d, perc_val=%f\n",i, iperc,ibin,bin_size,perc_val));
+			percentile_values[i] = perc_val;
+			D(fprintf(stderr, "TiffStats(): i=%d, prev_bin=%d, this_bin=%d, perc_val=%f\n",i, prev_bin,this_bin,perc_val));
+			if (tiff_auto > 0) {
+				if (i == (tiff_auto-1)){
+					*tiff_min = (int) perc_val;
+				} else if (i == (num_percentiles - tiff_auto)){
+					*tiff_max = (int) perc_val;
+				}
+			}
+		}
+		if (tiff_auto >= 0) {
+			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
+			return 0;
+		}
+		out_strp =  out_str + sprintf(out_str,
+				"<?xml version=\"1.0\"?>\n" \
+				"<tiff_stats>\n" \
+				"  <min>%d</min>\n" \
+				"  <max>%d</max>\n" \
+				"  <mean>%f</mean>\n" \
+				"  <points>%d</points>\n",
+				min_val,
+				max_val,
+				mean,
+				num_pix);
+		D(fprintf(stderr, "TiffStats(): out_str=\n%s\n, num_percentiles=%d\n",out_str,num_percentiles));
+		for (i = 0; i < num_percentiles; i++){
+			out_strp += sprintf(out_strp,"  <percentile_%s>%f</percentile_%s>\n", spercentiles[i], percentile_values[i], spercentiles[i]);
+		}
+		D(fprintf(stderr, "TiffStats(): strlen(out_str)=%d\n",strlen(out_str)));
+
+		out_strp += sprintf(out_strp,"</tiff_stats>\n");
+	} else { // incompatible color mode
+		D(fprintf(stderr, "Reporting incompatible color_mode \n"));
+		out_str =  "<?xml version=\"1.0\"?>\n" \
+				"<tiff_stats>\n" \
+				"  <error>This functionality is defined only for 16-bit uncompressed data</error>\n"
+				"</tiff_stats>\n";
+	}
+	printf("HTTP/1.0 200 OK\r\n");
+	printf("Server: Elphel Imgsrv\r\n");
+	printf("Access-Control-Allow-Origin: *\r\n");
+	printf("Access-Control-Expose-Headers: Content-Disposition\r\n");
+	printf("Content-Length: %d\r\n", strlen(out_str));
+	printf("Content-Type: text/xml\r\n");
+	printf("Pragma: no-cache\r\n");
+	printf("\r\n");
+	printf("%s",out_str);
+	if (color_mode == COLORMODE_RAW) { // only then allocated
+		if (hist16) free(hist16); // not used if tiff_auto == 0
+		free(out_str);
+	}
+	return 0;
+}
+
 int frameNumbersXML(struct file_set *fset)
 {
 	// very rarely exceeds 512
@@ -1319,6 +1602,74 @@ uint8_t * convertImage (
 	return dst;
 }
 
+int cumulHistImage ( // returns number of pixels
+		uint16_t * src,
+		int *      offs,
+		int        len,
+		int        width,
+		int        height,
+		int        telem,
+		int        bin_shift,
+		int        hist_size,
+		int        hist_min,
+		int *      hist16, // if null, will only calculate *sum_val, *mn and *mx
+		long long* sum_val,
+		int *      mn,
+		int *      mx
+		)
+{
+//	uint16_t pix16;
+	int ibin;
+	int start_pix = 0;    // index in src to start copying
+	int end_pix =   len;  // index in src to end copying
+	if (telem > 0) {
+		if (*offs < telem * width) {
+			start_pix =  telem * width - *offs;
+		}
+
+	} else if (telem < 0){
+		if (*offs +len > width * (height+telem)){
+			end_pix = width * (height+telem) - *offs;
+		}
+	}
+	D(fprintf(stderr, "histImage(): telem= %d, start_pix=%d, end_pix=%d, *sum_val=%ld, size of (long) = %d\n",	telem, start_pix, end_pix, *sum_val, sizeof(long)));
+	D(fprintf(stderr, "histImage(): *offs= %d, len=%d, width=%d, height=%d,telem=%d\n",
+			*offs, len, width,height,telem));
+	D(fprintf(stderr, "histImage(): bin_shift= %d, hist_size=%d, hist_min=%d \n",	bin_shift, hist_size, hist_min));
+
+	int max_bin = 0;
+	int min_bin = hist_size;
+	int num_pix = end_pix-start_pix;
+	for (; start_pix < end_pix; start_pix++) {
+		ibin = __bswap_16 (src[start_pix]);
+		*sum_val +=  ibin;
+		if (ibin < *mn) *mn = ibin;
+		if (ibin > *mx) *mx = ibin;
+		if (hist16)  { // only calculate sum (for average, min and max if hist16== null
+			ibin -= hist_min;
+			if (ibin < 0) ibin = 0;
+			ibin >>= bin_shift;
+			if (ibin >= hist_size) ibin = hist_size - 1;
+			if (ibin < min_bin) min_bin = ibin;
+			if (ibin > max_bin) max_bin = ibin;
+			hist16[ibin] ++;
+		}
+	}
+    *offs = end_pix; // index in the whole image (including telem)
+	D(fprintf(stderr, "histImage(): min_bin= %d, max_bin=%d\n",min_bin, max_bin));
+	if (hist16) {
+		D(fprintf(stderr, "histImage(): hist16[min...]= %d %d %d %d %d %d %d %d\n",
+				hist16[min_bin+0],hist16[min_bin+1],hist16[min_bin+2],hist16[min_bin+3],hist16[min_bin+4],hist16[min_bin+5],hist16[min_bin+6],hist16[min_bin+7]));
+		D(fprintf(stderr, "histImage(): hist16[...max]= %d %d %d %d %d %d %d %d\n",
+				hist16[max_bin-7],hist16[max_bin-6],hist16[max_bin-5],hist16[max_bin-4],hist16[max_bin-3],hist16[max_bin-2],hist16[max_bin-1],hist16[max_bin-0]));
+	}
+	D(fprintf(stderr, "histImage(): *mn= %d, *mx=%d, *sum_val=%lld\n",*mn, *mx, *sum_val));
+	D(fprintf(stderr, "histImage()->: *offs= %d\n",*offs));
+	return num_pix;
+}
+
+
+
 /**
  * @brief Read, prepare and send single image file
  *
@@ -1369,23 +1720,6 @@ int  sendImage(struct file_set *fset,
 	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR);     //get the current read pointer
 	D(fprintf(stderr, "jpeg_start (long) = 0x%x, bufferImageData=%d\n", jpeg_start,bufferImageData));
 
-#if 0
-	if (fset->jphead_fd<0)
-	    fset->jphead_fd = open(fset->jphead_fn, O_RDWR);
-	if (fset->jphead_fd < 0) { // check control OK
-		fprintf(stderr, "Error opening %s\n", fset->jphead_fn);
-		return -1;
-	}
-
-	lseek(fset->jphead_fd, jpeg_start + 1, SEEK_END);              // create JPEG header, find out it's size
-	head_size = lseek(fset->jphead_fd, 0, SEEK_END);
-	if (head_size > JPEG_HEADER_MAXSIZE) {
-		fprintf(stderr, "%s:%d: Too big JPEG header (%d > %d)", __FILE__, __LINE__, head_size, JPEG_HEADER_MAXSIZE );
-		close(fset->jphead_fd);
-		fset->jphead_fd = -1;
-		return -2;
-	}
-#endif
 	/* find total buffer length (it is in defines, actually in c313a.h */
 	buff_size = lseek(fset->circbuf_fd, 0, SEEK_END); // it is supposed to be open?
 	/* restore file poinetr after lseek-ing the end */
@@ -1626,13 +1960,14 @@ int  sendImage(struct file_set *fset,
 					(uint8_t * ) &jpeg_copy[l],                  // uint8_t *  dst,
 					(uint16_t *) &ccam_dma_buf[jpeg_start >> 2], //   src,
 					&tiff_offs,                                  // int *      offs,
-					(jpeg_len - (buff_size - jpeg_start))/2,     // int        len,// in pixels - number of pixels to copy
+					(buff_size - jpeg_start)/2,                  // int        len,// in pixels - number of pixels to copy
 					tiff_mn,                                     // int        mn,
 					tiff_mx,                                     // int        mx,
 					width,                                       // int        width,
 					height,                                      // int        height,
 					tiff_telem);                                 // int        telem);
 				// second part
+				l += buff_size - jpeg_start;
 				convertImage (
 					out_ptr,                                     // uint8_t *  dst, continue from where stopped
 					(uint16_t *)( &ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start)), //   src,
@@ -1748,10 +2083,19 @@ void listener_loop(struct file_set *fset)
     int frame_number,compressed_frame_number;
     int iv;
     int tiff_convert=0 ; // - convert tiff to bmp for preview
-    int tiff_mn= 20000;
-    int tiff_mx= 22000;
+    int tiff_mn= 0; // 20000;
+    int tiff_mx= 0xffff; // 22000;
     int tiff_palette = 0;
     int tiff_telem = 0; // 0 - none,>0 - skip first rows, <0 - skip last rows
+    int tiff_bin_shift =   3; // histogram bin size is 1<<3 == 8
+    int tiff_bin = 1;
+    int tiff_auto = -1;
+
+
+//	  int    bin_shift,   // binsize = 1 << bin_shift
+	int    tiff_hist_size;   // size of the histogram = ( 1 << size_shift)
+	int    tiff_hist_min;   // subtract from value before binning
+
 
 	memset((char*)&sock, 0, sizeof(sock));
 	sock.sin_port = htons(fset->port_num);
@@ -1816,25 +2160,6 @@ void listener_loop(struct file_set *fset)
 				fflush(stdout);
 				_exit(0);
 			}
-			/*
-			if ((strncmp(cp, "xframe", 6) == 0) || (strncmp(cp, "wxframe", 7) == 0)) {
-				if (strncmp(cp, "wxframe", 7) == 0) waitFrameSync(fset);
-				printf("HTTP/1.0 200 OK\r\n");
-				printf("Server: Elphel Imgsrv\r\n");
-				printf("Access-Control-Allow-Origin: *\r\n");
-				printf("Access-Control-Expose-Headers: Content-Disposition\r\n");
-				printf("Content-Type: text/xml\r\n");
-				printf("Pragma: no-cache\r\n");
-				printf("\r\n");
-				printf("<?xml version=\"1.0\"?>\n" \
-						"<frames>\n");
-				printf("<sensorFrame>%ld</sensorFrame>\n",getCurrentFrameNumberSensor(fset));
-				printf("<compressorFrame>%ld</compressorFrame>\n",getCurrentFrameNumberCompressor(fset));
-				printf ("</frames>\n");
-				fflush(stdout);
-				_exit(0);
-			}
-			*/
 			// now process the commands one at a time, but first - open the circbuf file and setup the pointer
 			if (fset->circbuf_fd<0)
 			    fset->circbuf_fd = open(fset->cirbuf_fn, O_RDWR);
@@ -1975,16 +2300,71 @@ void listener_loop(struct file_set *fset)
                 		} else if (strncmp(cp1, "tiff_palette", 12) == 0) {
                     		tiff_palette = iv;
                         	D(fprintf(stderr, "tiff_palette=%d'\n",tiff_palette));
+
                 		} else if (strncmp(cp1, "tiff_telem", 10) == 0) {
                     		tiff_telem = iv;
                         	D(fprintf(stderr, "tiff_telem=%d'\n",tiff_telem));
+
+                		} else if (strncmp(cp1, "tiff_bin", 8) == 0) {
+                			tiff_bin_shift = iv;
+                        	D(fprintf(stderr, "tiff_bin=%d'\n",tiff_bin_shift)); // bin_shift
+                    	} else 	if (strncmp(cp1, "tiff_auto", 9) == 0) { // it is a command, not a parameter
+                			tiff_auto = iv;
+                        	D(fprintf(stderr, "tiff_auto=%d'\n",tiff_auto));
+        					if (sent2socket > 0) break;  // image/xmldata was already sent to socket, ignore
+        					// use tiff_min, tiff_max, tiff_bin to calculate histogram parameters;
+        					tiff_bin = 1 << tiff_bin_shift;
+        					tiff_hist_size = (tiff_mx - tiff_mn)/ tiff_bin;
+        					if (tiff_mn + tiff_bin * tiff_hist_size < tiff_mx) tiff_hist_size++;
+        					tiff_hist_size ++;
+        					tiff_hist_min = tiff_mn - tiff_bin / 2;
+        					if (tiff_hist_min < 0) tiff_hist_min = 0;
+                        	D(fprintf(stderr, "TiffStats(auto=%d): tiff_bin_shift=%d, tiff_hist_size=%d, tiff_hist_min = %d, tiff_telem = %d\n",
+                        			tiff_auto, tiff_bin_shift, tiff_hist_size, tiff_hist_min, tiff_telem));
+        					iv = TiffStats(
+        							fset,           // struct file_set fset,
+        							tiff_auto,      // int    tiff_auto,   // -1 - return XML, >=0 set tiff_min and tiff_max (if non-NULL)
+        							&tiff_mn,       // int *  tiff_min,
+									&tiff_mx,       // int *  tiff_max,
+    								tiff_bin_shift, // int    bin_shift,   // binsize = 1 << bin_shift
+    								tiff_hist_size, // int    hist_size,   // size of the histogram = ( 1 << size_shift)
+    								tiff_hist_min,  // int    hist_min,   // subtract from value before binning
+    								tiff_telem);    // int    tiff_telem);
+        					D(fprintf(stderr, "tiff_auto command: DONE: tiff_auto=%d, tiff_mn=%d, tiff_mx=%d\n",tiff_auto, tiff_mn, tiff_mx));
+                		} else {
+                        	D(fprintf(stderr, "unrecognized tiff_$ command: %s'\n",cp1)); // bin_shift
                 		}
                 	}
                 	if (strncmp(cp1, "tiff_convert", 12) == 0) {
                 		tiff_convert = 1;
                     	D(fprintf(stderr, "tiff_convert=%d'\n",tiff_convert));
-                	}
+                	} else 	if (strncmp(cp1, "tiff_stats", 10) == 0) { // it is a command, not a parameter
+                    	D(fprintf(stderr, "tiff_stats command\n"));
+    					if (sent2socket > 0) break;  // image/xmldata was already sent to socket, ignore
+    					// use tiff_min, tiff_max, tiff_bin to calculate histogram parameters;
+    					tiff_bin = 1 << tiff_bin_shift;
+    					tiff_hist_size = (tiff_mx - tiff_mn)/ tiff_bin;
+    					if (tiff_mn + tiff_bin * tiff_hist_size < tiff_mx) tiff_hist_size++;
+    					tiff_hist_size ++;
+    					tiff_hist_min = tiff_mn - tiff_bin / 2;
+    					if (tiff_hist_min < 0) tiff_hist_min = 0;
+                    	D(fprintf(stderr, "TiffStats(): tiff_bin_shift=%d, tiff_hist_size=%d, tiff_hist_min = %d, tiff_telem = %d\n",
+                    			tiff_bin_shift, tiff_hist_size, tiff_hist_min, tiff_telem));
 
+    					TiffStats(
+    							fset,           // struct file_set fset,
+    						    -1,             //   int    tiff_auto,   // -1 - return XML, >=0 set tiff_min and tiff_max (if non-NULL)
+    							NULL,           //  int *  tiff_min,
+								NULL,           //  int *  tiff_max,
+								tiff_bin_shift, // 	  int    bin_shift,   // binsize = 1 << bin_shift
+								tiff_hist_size, // 	  int    hist_size,   // size of the histogram = ( 1 << size_shift)
+								tiff_hist_min,  // 	  int    hist_min,   // subtract from value before binning
+								tiff_telem);    // 	  int    tiff_telem);
+                    	D(fprintf(stderr, "tiff_stats command: DONE, sent2socket=%d\n", sent2socket));
+    					sent2socket = 3;
+    					fflush(stdout);         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
+//                    	_exit(0);
+                	}
 				} else if (strcmp(cp1, "noexif") == 0) {
 					exif_enable = 0;
 				} else if (strcmp(cp1, "exif") == 0) {
