@@ -952,6 +952,8 @@ int TiffStats(struct file_set * fset,
 	int hist16_size = sizeof(int) * hist_size;
 	int * hist16 = 0; //	memset((char*)&sock, 0, sizeof(sock));
 	int tiff_offs;
+	int tiff_auto_high = -1;
+	int tiff_auto_low =  -1;
 
 	char *out_str; // 1024
 	char *out_strp;
@@ -975,10 +977,17 @@ int TiffStats(struct file_set * fset,
 #if ELPHEL_DEBUG_THIS
 	float perc_val0, perc_val1, perc_diff; // just debug
 #endif
-	if (tiff_auto > (num_percentiles/2)){ // 0 is for absolute min/max, <0 - for XML
-		tiff_auto = num_percentiles/2;
+	if (tiff_auto >= 0) { // first digit high side, second - low side
+		tiff_auto_high = tiff_auto/10;
+		tiff_auto_low =  tiff_auto - 10* tiff_auto_high;
+
+		while ((tiff_auto_high + tiff_auto_low) > num_percentiles){
+			if (tiff_auto_high > 0) tiff_auto_high--;
+			if (tiff_auto_low > 0) tiff_auto_low--;
+		}
 	}
-	D(fprintf(stderr, "TiffStats(): tiff_auto=%d, tiff_min = %p, tiff_max = %p\n",tiff_auto,tiff_min,tiff_max));
+	D(fprintf(stderr, "TiffStats(): tiff_auto=%d, tiff_auto_high=%d, tiff_auto_low=%d, tiff_min = %p, tiff_max = %p\n",
+			tiff_auto,tiff_auto_high,tiff_auto_low,tiff_min,tiff_max));
 
 	jpeg_start = lseek(fset->circbuf_fd, 0, SEEK_CUR);     //get the current read pointer
 
@@ -1019,7 +1028,7 @@ int TiffStats(struct file_set * fset,
 		D(fprintf(stderr, "TiffStats(): color_mode=0x%x, tiff_telem=%d, hist_size=%d, hist16_size=%d\n",color_mode, tiff_telem, hist_size, hist16_size));
 
 		// Allocate histogram array
-		if (tiff_auto != 0) { // tiff_auto==0 - only calculate min, max (and sum/average - not used)
+		if ((tiff_auto_high != 0) || (tiff_auto_low != 0)) { // tiff_auto==0 - only calculate min, max (and sum/average - not used)
 			hist16 = malloc(hist16_size);
 			if (!hist16) {
 				D(fprintf(stderr, "Malloc error allocating hist16 %d (0x%x) bytes\n",hist16_size, hist16_size));
@@ -1093,10 +1102,16 @@ int TiffStats(struct file_set * fset,
 		// convert histogram to cumulative histogram
 		D(fprintf(stderr, "TiffStats(): num_pix = %d, min_val=%d, max_val=%d\n",num_pix, min_val, max_val));
 
-		if (tiff_auto == 0){ // absolute min/max
-			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
+		if (tiff_auto_low == 0){ // absolute min
+			D(fprintf(stderr, "TiffStats(): tiff_auto_low=%d, *tiff_min=%d\n",tiff_auto_low, *tiff_min));
 			*tiff_min = min_val;
+		}
+		if (tiff_auto_high == 0){ // absolute max
+			D(fprintf(stderr, "TiffStats(): tiff_auto_high=%d, *tiff_max=%d\n",tiff_auto_low, *tiff_max));
 			*tiff_max = max_val;
+		}
+
+		if ((tiff_auto_low == 0) && (tiff_auto_high == 0)){ // absolute min/max
 			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
 			return 0; // no need to process more
 		}
@@ -1143,6 +1158,7 @@ int TiffStats(struct file_set * fset,
 			D(fprintf(stderr, "TiffStats(): i=%d, iperc=%d, ibin=%d, bin_size=%d, perc_val=%f\n",i, iperc,ibin,bin_size,perc_val));
 			percentile_values[i] = perc_val;
 			D(fprintf(stderr, "TiffStats(): i=%d, prev_bin=%d, this_bin=%d, perc_val=%f\n",i, prev_bin,this_bin,perc_val));
+			/*
 			if (tiff_auto > 0) {
 				if (i == (tiff_auto-1)){
 					*tiff_min = (int) perc_val;
@@ -1150,9 +1166,16 @@ int TiffStats(struct file_set * fset,
 					*tiff_max = (int) perc_val;
 				}
 			}
+			*/
+			if ((tiff_auto_low > 0) && (i == (tiff_auto_low-1))) {
+				*tiff_min = (int) perc_val;
+			} else if ((tiff_auto_high > 0) && (i == (num_percentiles - tiff_auto_high))) {
+				*tiff_max = (int) perc_val;
+			}
 		}
 		if (tiff_auto >= 0) {
-			D(fprintf(stderr, "TiffStats(): tiff_auto=%d, *tiff_min=%d, *tiff_max=%d\n",tiff_auto, *tiff_min, *tiff_max));
+			D(fprintf(stderr, "TiffStats(): tiff_auto=%d,  tiff_auto_low=%d, tiff_auto_high=%d, *tiff_min=%d, *tiff_max=%d\n",
+					tiff_auto, tiff_auto_low, tiff_auto_high, *tiff_min, *tiff_max));
 			return 0;
 		}
 		out_strp =  out_str + sprintf(out_str,
