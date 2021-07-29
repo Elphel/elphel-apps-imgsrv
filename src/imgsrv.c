@@ -1204,6 +1204,8 @@ int TiffStats(struct file_set * fset,
 				"  <error>This functionality is defined only for 16-bit uncompressed data</error>\n"
 				"</tiff_stats>\n";
 	}
+	D(fprintf(stderr, "TiffStats(): sending response %d bytes long\n",strlen(out_str)));
+
 	printf("HTTP/1.0 200 OK\r\n");
 	printf("Server: Elphel Imgsrv\r\n");
 	printf("Access-Control-Allow-Origin: *\r\n");
@@ -1213,10 +1215,13 @@ int TiffStats(struct file_set * fset,
 	printf("Pragma: no-cache\r\n");
 	printf("\r\n");
 	printf("%s",out_str);
+	D(fprintf(stderr, "TiffStats(): sending response %d bytes long\n",strlen(out_str)));
 	if (color_mode == COLORMODE_RAW) { // only then allocated
+		D(fprintf(stderr, "TiffStats(): hist16 = %p\n",hist16));
 		if (hist16) free(hist16); // not used if tiff_auto == 0
 		free(out_str);
 	}
+	D(fprintf(stderr, "TiffStats(): All Done, return 0\n"));
 	return 0;
 }
 
@@ -2388,7 +2393,7 @@ void listener_loop(struct file_set *fset)
 								tiff_hist_size, // 	  int    hist_size,   // size of the histogram = ( 1 << size_shift)
 								tiff_hist_min,  // 	  int    hist_min,   // subtract from value before binning
 								tiff_telem);    // 	  int    tiff_telem);
-                    	D(fprintf(stderr, "tiff_stats command: DONE, sent2socket=%d\n", sent2socket));
+                    	D(fprintf(stderr, "tiff_stats command: DONE, sent2socket=%d\n", sent2socket)); // gets here
     					sent2socket = 3;
     					fflush(stdout);         // let's not keep client waiting - anyway we've sent it all even when more commands  maybe left
 //                    	_exit(0);
@@ -2428,14 +2433,17 @@ void listener_loop(struct file_set *fset)
 				} else {
 					if (cp1[0] != '_') fprintf(stderr, "Unrecognized URL command: \"%s\" - ignoring\n", cp1);  // allow "&_time=..." be silently ignored - needed for javascript image reload
 				}
+            	D(fprintf(stderr, "End of loop while ((cp1=strsep(&cp, \"/?&\"))), cp1 = '%s'\n",cp1));
 			} // while ((cp1=strsep(&cp, "/?&")))
+        	D(fprintf(stderr, "Loop  while ((cp1=strsep(&cp, \"/?&\" is over, sent2socket=%d\n", sent2socket)); // gets here
 			if (sent2socket <= 0) { // Nothing was sent to the client so far and the command line is over. Let's return 1x1 pixel gif
 				out1x1gif();
 			} else if (sent2socket == 2) {
 				metaXML(fset, 2);   // 0 - new (send headers), 1 - continue, 2 - finish
 			}
-
+        	D(fprintf(stderr, "Flushing stdout ...\n"));
 			fflush(stdout); // probably it is not needed anymore, just in case
+        	D(fprintf(stderr, "... and exiting\n"));
 			_exit(0);
 		} // end of child process
 		close(fd); // parent
