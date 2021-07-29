@@ -211,8 +211,9 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"tiff_bin=<power-of-2> specifies bin size as a power of 2: 0 - bin size == 1, 1 - bin size is 2, 2 -> 4, etc.\n"
 		"tiff_stats is the command itself, it should be after the required parameters: tiff_mn=<...>/tiff_mx=<...>/tiff_telem=<...>/tiff_bin=<...>/tiff_stats.\n"
 		"tiff_auto=[value] may preceed tiff_convert and calculate and set min/max for conversion using tiff_stat internally.\n"
-		"          Value 0 - use bsolute min/max values, 1 - 0.1% to 99.9%, 2 - 0.5% to 99.5%, 3 - 1% to 99%, 4 - 5% to 95% and >=5 - 10% to 90%."
-		;
+		"          Value is a 2-digit decimal, low digit applies to cut from the lower (cold) values, high digit - to cut from the high (hot) ones:\n"
+		"          Value 0 - use asolute min/max values, 1 - 0.1%% to 100.0%%, 10 - 0%% to 99.9%%, 22 - from 0.5%% to 99.5%%, 03 - from 1%% to 100%%,\n"
+		"          Value 24 - from 5%% to 99.5%%, 55 - 10%% to 90%%.\n";
 
 // path to file containing serial number
 static const char path_to_serial[] = "/sys/devices/soc0/elphel393-init/serial";
@@ -1037,7 +1038,7 @@ int TiffStats(struct file_set * fset,
 			}
 			memset((char*)hist16, 0, hist16_size);
 		}
-		D(fprintf(stderr, "TiffStats(), sum_val=%ld\n",sum_val));
+		D(fprintf(stderr, "TiffStats(), sum_val=%lld\n",sum_val));
 
 		tiff_offs = 0;
 		num_pix = 0;
@@ -1066,7 +1067,7 @@ int TiffStats(struct file_set * fset,
 			// second part
 			l += buff_size - jpeg_start;
 			num_pix += cumulHistImage (
-					(uint16_t *)( &ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start)), // uint16_t * src,
+					(uint16_t *) &ccam_dma_buf[0],               // uint16_t * src, //  // , jpeg_len - (buff_size - jpeg_start)),
 					&tiff_offs,                                  // int *      offs,
 					(jpeg_len - (buff_size - jpeg_start))/2,     // int        len,
 					width,                                       // int        width,
@@ -1655,14 +1656,15 @@ int cumulHistImage ( // returns number of pixels
 			end_pix = width * (height+telem) - *offs;
 		}
 	}
-	D(fprintf(stderr, "histImage(): telem= %d, start_pix=%d, end_pix=%d, *sum_val=%ld, size of (long) = %d\n",	telem, start_pix, end_pix, *sum_val, sizeof(long)));
-	D(fprintf(stderr, "histImage(): *offs= %d, len=%d, width=%d, height=%d,telem=%d\n",
-			*offs, len, width,height,telem));
+	D(fprintf(stderr, "histImage(): telem= %d, start_pix=%d, end_pix=%d, *sum_val=%lld, size of (long) = %d\n",	telem, start_pix, end_pix, *sum_val, sizeof(long)));
+	D(fprintf(stderr, "histImage(): *offs= %d, len=%d, width=%d, height=%d,telem=%d\n",	*offs, len, width,height,telem));
 	D(fprintf(stderr, "histImage(): bin_shift= %d, hist_size=%d, hist_min=%d \n",	bin_shift, hist_size, hist_min));
 
 	int max_bin = 0;
 	int min_bin = hist_size;
 	int num_pix = end_pix-start_pix;
+	D(fprintf(stderr, "src[start_pix] = %p, start_pix=%d, len=%d\n",&src[start_pix], start_pix, end_pix-start_pix));
+
 	for (; start_pix < end_pix; start_pix++) {
 		ibin = __bswap_16 (src[start_pix]);
 		*sum_val +=  ibin;
@@ -1687,7 +1689,7 @@ int cumulHistImage ( // returns number of pixels
 				hist16[max_bin-7],hist16[max_bin-6],hist16[max_bin-5],hist16[max_bin-4],hist16[max_bin-3],hist16[max_bin-2],hist16[max_bin-1],hist16[max_bin-0]));
 	}
 	D(fprintf(stderr, "histImage(): *mn= %d, *mx=%d, *sum_val=%lld\n",*mn, *mx, *sum_val));
-	D(fprintf(stderr, "histImage()->: *offs= %d\n",*offs));
+	D(fprintf(stderr, "histImage()->: *offs= %d, num_pix=%d\n",*offs,num_pix));
 	return num_pix;
 }
 
@@ -1993,7 +1995,7 @@ int  sendImage(struct file_set *fset,
 				l += buff_size - jpeg_start;
 				convertImage (
 					out_ptr,                                     // uint8_t *  dst, continue from where stopped
-					(uint16_t *)( &ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start)), //   src,
+					(uint16_t *) &ccam_dma_buf[0],               // jpeg_len - (buff_size - jpeg_start)), //   src,
 					&tiff_offs,                                  // int *      offs,
 					(jpeg_len - (buff_size - jpeg_start))/2,     // int        len,// in pixels - number of pixels to copy
 					tiff_mn,                                     // int        mn,
@@ -2003,8 +2005,11 @@ int  sendImage(struct file_set *fset,
 					tiff_telem);                                 // int        telem);
 			} else {
 				memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start);
+				D(fprintf(stderr, "memcpy(%p,%p,%d)\n",&jpeg_copy[l],&ccam_dma_buf[jpeg_start >> 2], buff_size - jpeg_start));
+
 				l += buff_size - jpeg_start;
 				memcpy(&jpeg_copy[l], (unsigned long* )&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start));
+				D(fprintf(stderr, "memcpy(%p,%p,%d)\n",&jpeg_copy[l],&ccam_dma_buf[0], jpeg_len - (buff_size - jpeg_start)));
 			}
 			D1(fprintf(stderr, "Two parts (buffered), jpeg_start (long) = 0x%x\n", jpeg_start));
 		} else { /* single segment */
