@@ -36,6 +36,9 @@
 #include <elphel/x393_devices.h>
 #include <byteswap.h>
 
+#include <sys/reboot.h>
+
+
  // change to 0 when done
 #define ELPHEL_DEBUG 0
 #if ELPHEL_DEBUG
@@ -198,6 +201,7 @@ const char url_args[] = "This server supports sequence of commands entered in th
 		"         No effect on free-running or \"slave\" cameras, so it is OK to send it to all.\n"
         "timestamp_name - format file name as <seconds>_<useconds>_<channel>.<ext>\n"
 		"bchn[n]- base channel = n, <channel> = n + port number (0-3) - for unique naming of multicamera systems.\n"
+		"reboot - reboot system (useful when all php-cgi instances are stuck).\n"
 		"\n"
         "tiff_*   commands to preview 16-bit TIFF files as 8-bit indexed BMP ones (always buffered), they should be inserted before /bimg)\n"
         "tiff_convert - enable conversion, replace TIFF with BMP\n"
@@ -2430,6 +2434,15 @@ void listener_loop(struct file_set *fset)
 				    fprintf(stderr, "Retriggering camera : lseek 0x%x, SEEK_END\n", LSEEK_DMA_INIT);
 				} else if (strcmp(cp1, "favicon.ico") == 0) {
 					// ignore silently - for now, later make an icon?
+				} else if (strcmp(cp1, "reboot") == 0) {
+					// Try to send response before dying
+					if (sent2socket <= 0) { // Nothing was sent to the client so far and the command line is over. Let's return 1x1 pixel gif
+						metaXML(fset, 0);
+					}
+					metaXML(fset, 2);   // 0 - new (send headers), 1 - continue, 2 - finish
+					fflush(stdout); // probably it is not needed anymore, just in case
+					sync();
+					reboot(RB_AUTOBOOT);
 				} else {
 					if (cp1[0] != '_') fprintf(stderr, "Unrecognized URL command: \"%s\" - ignoring\n", cp1);  // allow "&_time=..." be silently ignored - needed for javascript image reload
 				}
